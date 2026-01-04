@@ -54,7 +54,7 @@ export default function CustomersPage() {
       } else {
         setError(data.error || 'Không thể tải danh sách khách hàng');
       }
-    } catch (err) {
+    } catch {
       setError('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
@@ -148,7 +148,7 @@ export default function CustomersPage() {
           setFormError(data.error || 'Không thể cập nhật khách hàng');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
@@ -171,7 +171,7 @@ export default function CustomersPage() {
       } else {
         setError(data.error || 'Không thể xóa khách hàng');
       }
-    } catch (err) {
+    } catch {
       setError('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setDeleteConfirmCustomer(null);

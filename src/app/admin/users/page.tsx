@@ -49,7 +49,7 @@ export default function UsersPage() {
       } else {
         setError(data.error || 'Failed to fetch users');
       }
-    } catch (err) {
+    } catch {
       setError('Network error. Please try again.');
     } finally {
       setIsLoading(false);
@@ -173,7 +173,7 @@ export default function UsersPage() {
           setFormError(data.error || 'Failed to update user');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Network error. Please try again.');
     } finally {
       setIsSubmitting(false);
@@ -196,7 +196,7 @@ export default function UsersPage() {
       } else {
         setError(data.error || 'Failed to delete user');
       }
-    } catch (err) {
+    } catch {
       setError('Network error. Please try again.');
     } finally {
       setDeleteConfirmUser(null);

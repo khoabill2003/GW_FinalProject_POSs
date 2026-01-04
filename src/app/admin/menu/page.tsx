@@ -296,7 +296,7 @@ export default function MenuManagement() {
           setFormError(data.error || 'Không thể cập nhật món');
         }
       }
-    } catch (err) {
+    } catch {
       setFormError('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
@@ -319,7 +319,7 @@ export default function MenuManagement() {
       } else {
         setError(data.error || 'Không thể xóa món');
       }
-    } catch (err) {
+    } catch {
       setError('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setDeleteConfirmItem(null);
@@ -337,7 +337,7 @@ export default function MenuManagement() {
       if (response.ok) {
         fetchMenuItems();
       }
-    } catch (err) {
+    } catch {
       console.error('Failed to toggle availability');
     }
   };

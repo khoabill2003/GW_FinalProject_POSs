@@ -129,7 +129,7 @@ export default function OrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, [filterStatus, filterPayment]);
+  }, [filterStatus, filterPayment, isCashier]);
 
   useEffect(() => {
     fetchOrders();
@@ -187,15 +187,6 @@ export default function OrdersPage() {
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('vi-VN');
-  };
-
-  // Get next status for kitchen workflow
-  const getNextKitchenStatus = (currentStatus: OrderStatus): OrderStatus | null => {
-    const kitchenFlow: Partial<Record<OrderStatus, OrderStatus>> = {
-      confirmed: 'preparing',
-      preparing: 'ready',
-    };
-    return kitchenFlow[currentStatus] || null;
   };
 
   // Kitchen View - Card layout for easy status updates
