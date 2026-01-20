@@ -1,5 +1,6 @@
 // Menu Service - Business logic cho menu
 import prisma from '@/lib/db';
+import { generateId } from '@/lib/utils';
 
 export interface CreateMenuItemInput {
   name: string;
@@ -44,9 +45,8 @@ export async function getMenuItems(filters?: { categoryId?: string; available?: 
   return prisma.menuItem.findMany({
     where: whereClause,
     include: {
-      category: true,
-      ingredients: {
-        include: { ingredient: true },
+      category: {
+        select: { id: true, name: true }
       },
     },
     orderBy: { name: 'asc' },
@@ -58,9 +58,8 @@ export async function getMenuItemById(id: string) {
   return prisma.menuItem.findUnique({
     where: { id },
     include: {
-      category: true,
-      ingredients: {
-        include: { ingredient: true },
+      category: {
+        select: { id: true, name: true }
       },
     },
   });
@@ -82,6 +81,7 @@ export async function createMenuItem(input: CreateMenuItemInput) {
 
   const menuItem = await prisma.menuItem.create({
     data: {
+      id: generateId(),
       name,
       description: description || null,
       price,
@@ -92,6 +92,7 @@ export async function createMenuItem(input: CreateMenuItemInput) {
       ...(ingredients && ingredients.length > 0 && {
         ingredients: {
           create: ingredients.map((ing) => ({
+            id: generateId(),
             ingredientId: ing.ingredientId,
             quantity: ing.quantity,
           })),
@@ -99,9 +100,8 @@ export async function createMenuItem(input: CreateMenuItemInput) {
       }),
     },
     include: {
-      category: true,
-      ingredients: {
-        include: { ingredient: true },
+      category: {
+        select: { id: true, name: true }
       },
     },
   });
@@ -137,6 +137,7 @@ export async function updateMenuItem(id: string, input: UpdateMenuItemInput) {
       ...(input.ingredients && input.ingredients.length > 0 && {
         ingredients: {
           create: input.ingredients.map((ing) => ({
+            id: generateId(),
             ingredientId: ing.ingredientId,
             quantity: ing.quantity,
           })),
@@ -144,9 +145,8 @@ export async function updateMenuItem(id: string, input: UpdateMenuItemInput) {
       }),
     },
     include: {
-      category: true,
-      ingredients: {
-        include: { ingredient: true },
+      category: {
+        select: { id: true, name: true }
       },
     },
   });

@@ -1,6 +1,7 @@
 // User Service - Business logic cho người dùng
 import prisma from '@/lib/db';
 import { hashPassword, verifyPassword } from '@/lib/middleware/auth';
+import { generateId } from '@/lib/utils';
 
 export interface CreateUserInput {
   email: string;
@@ -78,6 +79,7 @@ export async function createUser(input: CreateUserInput) {
 
   const user = await prisma.user.create({
     data: {
+      id: generateId(),
       email,
       password: hashedPassword,
       name,

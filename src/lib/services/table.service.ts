@@ -1,5 +1,6 @@
 // Table Service - Business logic cho bàn
 import prisma from '@/lib/db';
+import { generateId } from '@/lib/utils';
 
 export interface CreateTableInput {
   number: number;
@@ -31,13 +32,8 @@ export async function getTables(filters?: { zoneId?: string; status?: string }) 
   return prisma.table.findMany({
     where: whereClause,
     include: {
-      zone: true,
-      orders: {
-        where: {
-          status: {
-            in: ['pending', 'confirmed', 'preparing', 'ready', 'served'],
-          },
-        },
+      zone: {
+        select: { id: true, name: true }
       },
     },
     orderBy: { number: 'asc' },
@@ -49,16 +45,8 @@ export async function getTableById(id: string) {
   return prisma.table.findUnique({
     where: { id },
     include: {
-      zone: true,
-      orders: {
-        where: {
-          status: {
-            in: ['pending', 'confirmed', 'preparing', 'ready', 'served'],
-          },
-        },
-        include: {
-          items: true,
-        },
+      zone: {
+        select: { id: true, name: true }
       },
     },
   });
@@ -88,13 +76,18 @@ export async function createTable(input: CreateTableInput) {
 
   const table = await prisma.table.create({
     data: {
+      id: generateId(),
       number,
       name: name || null,
       capacity: capacity || 4,
       status: 'available',
       zoneId: zoneId || null,
     },
-    include: { zone: true },
+    include: {
+      zone: {
+        select: { id: true, name: true }
+      }
+    },
   });
 
   return table;
@@ -130,7 +123,11 @@ export async function updateTable(id: string, input: UpdateTableInput) {
       ...(input.status && { status: input.status }),
       ...(input.zoneId !== undefined && { zoneId: input.zoneId }),
     },
-    include: { zone: true },
+    include: {
+      zone: {
+        select: { id: true, name: true }
+      }
+    },
   });
 
   return table;
@@ -174,6 +171,10 @@ export async function updateTableStatus(id: string, status: string) {
   return prisma.table.update({
     where: { id },
     data: { status },
-    include: { zone: true },
+    include: {
+      zone: {
+        select: { id: true, name: true }
+      }
+    },
   });
 }

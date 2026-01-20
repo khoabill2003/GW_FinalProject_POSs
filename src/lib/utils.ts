@@ -1,5 +1,11 @@
+import { randomBytes } from 'crypto';
+
 export function cn(...inputs: string[]) {
   return inputs.filter(Boolean).join(' ');
+}
+
+export function generateId(): string {
+  return randomBytes(12).toString('hex');
 }
 
 export function formatCurrency(amount: number): string {

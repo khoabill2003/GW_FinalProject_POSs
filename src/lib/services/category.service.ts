@@ -1,5 +1,6 @@
 // Category Service - Business logic cho danh mục
 import prisma from '@/lib/db';
+import { generateId } from '@/lib/utils';
 
 export interface CreateCategoryInput {
   name: string;
@@ -17,11 +18,6 @@ export interface UpdateCategoryInput {
 export async function getCategories() {
   return prisma.category.findMany({
     orderBy: { order: 'asc' },
-    include: {
-      _count: {
-        select: { menuItems: true },
-      },
-    },
   });
 }
 
@@ -64,6 +60,7 @@ export async function createCategory(input: CreateCategoryInput) {
 
   const category = await prisma.category.create({
     data: {
+      id: generateId(),
       name: name.trim(),
       description: description || null,
       order: categoryOrder,
@@ -108,19 +105,13 @@ export async function updateCategory(id: string, input: UpdateCategoryInput) {
 
 // Xóa danh mục
 export async function deleteCategory(id: string) {
-  const category = await prisma.category.findUnique({
-    where: { id },
-    include: {
-      _count: { select: { menuItems: true } },
-    },
+  // First check if category has items
+  const menuItemCount = await prisma.menuItem.count({
+    where: { categoryId: id }
   });
 
-  if (!category) {
-    throw new Error('Danh mục không tồn tại');
-  }
-
-  if (category._count.menuItems > 0) {
-    throw new Error(`Không thể xóa danh mục đang có ${category._count.menuItems} món`);
+  if (menuItemCount > 0) {
+    throw new Error(`Không thể xóa danh mục đang có ${menuItemCount} món`);
   }
 
   await prisma.category.delete({ where: { id } });

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { UserService } from '@/lib/services';
 
+export const dynamic = 'force-dynamic';
+
 // GET all users
 export async function GET() {
   try {
@@ -39,3 +41,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

@@ -5,7 +5,11 @@ export interface MenuItem {
   name: string;
   description: string;
   price: number;
-  category: string;
+  category: {
+    id: string;
+    name: string;
+  };
+  categoryId?: string;
   image?: string;
   available: boolean;
   createdAt: Date;
@@ -18,6 +22,24 @@ export interface Category {
   description?: string;
   icon?: string;
   order: number;
+}
+
+export interface Zone {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export interface Table {
+  id: string;
+  number: number;
+  name?: string;
+  capacity: number;
+  status: 'available' | 'occupied' | 'reserved';
+  zoneId?: string;
+  zone?: Zone;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface CartItem {
@@ -35,8 +57,23 @@ export interface Order {
   total: number;
   status: OrderStatus;
   paymentMethod?: PaymentMethod;
-  tableNumber?: number;
-  customerName?: string;
+  paymentStatus?: 'paid' | 'unpaid';
+  table?: Table;
+  tableId?: string;
+  customer?: Customer;
+  customerId?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
   createdAt: Date;
   updatedAt: Date;
 }

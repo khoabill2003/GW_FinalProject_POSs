@@ -1,6 +1,21 @@
 // Order Service - Business logic cho đơn hàng
 import prisma from '@/lib/db';
 
+// Helper function to generate UUID
+function generateId() {
+  return 'order-' + Date.now().toString(36) + Math.random().toString(36).substr(2);
+}
+
+interface OrderItem {
+  costPrice?: number;
+}
+
+interface Order {
+  createdAt: Date;
+  total: number;
+  items: OrderItem[];
+}
+
 export interface CreateOrderInput {
   items: {
     menuItemId: string;
@@ -48,10 +63,42 @@ export async function getOrders(filters?: {
     orderBy: { createdAt: 'desc' },
     include: {
       items: {
-        include: { menuItem: true },
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          notes: true,
+          menuItemId: true,
+          menuItemName: true,
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            }
+          }
+        }
       },
-      table: true,
-      customer: true,
+      table: {
+        select: {
+          id: true,
+          number: true,
+          zone: {
+            select: {
+              id: true,
+              name: true,
+            }
+          }
+        }
+      },
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+        }
+      },
     },
   });
 }
@@ -62,10 +109,42 @@ export async function getOrderById(id: string) {
     where: { id },
     include: {
       items: {
-        include: { menuItem: true },
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          notes: true,
+          menuItemId: true,
+          menuItemName: true,
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            }
+          }
+        }
       },
-      table: true,
-      customer: true,
+      table: {
+        select: {
+          id: true,
+          number: true,
+          zone: {
+            select: {
+              id: true,
+              name: true,
+            }
+          }
+        }
+      },
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+        }
+      },
     },
   });
 }
@@ -137,6 +216,7 @@ export async function createOrder(input: CreateOrderInput) {
   // Create order
   const order = await prisma.order.create({
     data: {
+      id: generateId(),
       orderNumber,
       subtotal,
       tax,
@@ -148,7 +228,10 @@ export async function createOrder(input: CreateOrderInput) {
       customerId: customerId || null,
       notes: notes || null,
       items: {
-        create: orderItems,
+        create: orderItems.map(item => ({
+          id: 'item-' + Date.now().toString(36) + Math.random().toString(36).substr(2),
+          ...item,
+        })),
       },
     },
     include: {
@@ -173,7 +256,6 @@ export async function createOrder(input: CreateOrderInput) {
 export async function updateOrder(id: string, input: UpdateOrderInput) {
   const existingOrder = await prisma.order.findUnique({
     where: { id },
-    include: { table: true },
   });
 
   if (!existingOrder) {
@@ -188,10 +270,55 @@ export async function updateOrder(id: string, input: UpdateOrderInput) {
       ...(input.paymentMethod && { paymentMethod: input.paymentMethod }),
       ...(input.notes !== undefined && { notes: input.notes }),
     },
-    include: {
-      items: true,
-      table: true,
-      customer: true,
+    select: {
+      id: true,
+      orderNumber: true,
+      status: true,
+      paymentStatus: true,
+      paymentMethod: true,
+      subtotal: true,
+      tax: true,
+      total: true,
+      notes: true,
+      createdAt: true,
+      updatedAt: true,
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          notes: true,
+          menuItemId: true,
+          menuItemName: true,
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            }
+          }
+        }
+      },
+      table: {
+        select: {
+          id: true,
+          number: true,
+          zone: {
+            select: {
+              id: true,
+              name: true,
+            }
+          }
+        }
+      },
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+        }
+      },
     },
   });
 
@@ -210,7 +337,6 @@ export async function updateOrder(id: string, input: UpdateOrderInput) {
 export async function deleteOrder(id: string) {
   const existingOrder = await prisma.order.findUnique({
     where: { id },
-    include: { table: true },
   });
 
   if (!existingOrder) {
@@ -247,10 +373,10 @@ export async function getOrderStats() {
   });
 
   const calculateStats = (startDate: Date) => {
-    const filteredOrders = orders.filter(o => new Date(o.createdAt) >= startDate);
-    const sales = filteredOrders.reduce((sum, o) => sum + o.total, 0);
-    const cost = filteredOrders.reduce((sum, o) => 
-      sum + o.items.reduce((itemSum, item) => itemSum + (item.costPrice || 0), 0), 0
+    const filteredOrders = orders.filter((o: Order) => new Date(o.createdAt) >= startDate);
+    const sales = filteredOrders.reduce((sum: number, o: Order) => sum + o.total, 0);
+    const cost = filteredOrders.reduce((sum: number, o: Order) => 
+      sum + o.items.reduce((itemSum: number, item: OrderItem) => itemSum + (item.costPrice || 0), 0), 0
     );
     return { sales, cost, profit: sales - cost, count: filteredOrders.length };
   };

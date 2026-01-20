@@ -1,5 +1,6 @@
 // Customer Service - Business logic cho khách hàng
 import prisma from '@/lib/db';
+import { generateId } from '@/lib/utils';
 
 export interface CreateCustomerInput {
   name: string;
@@ -21,11 +22,6 @@ export interface UpdateCustomerInput {
 export async function getCustomers() {
   return prisma.customer.findMany({
     orderBy: { createdAt: 'desc' },
-    include: {
-      _count: {
-        select: { orders: true },
-      },
-    },
   });
 }
 
@@ -67,6 +63,7 @@ export async function createCustomer(input: CreateCustomerInput) {
 
   const customer = await prisma.customer.create({
     data: {
+      id: generateId(),
       name,
       phone: phone || null,
       email: email || null,

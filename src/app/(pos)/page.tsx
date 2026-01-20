@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { formatCurrency, formatOrderNumber } from '@/lib/utils';
+import ReceiptModal from '@/components/pos/ReceiptModal';
+import RestaurantInfo from '@/components/ui/RestaurantInfo';
 
 interface Category {
   id: string;
@@ -32,7 +34,7 @@ interface Table {
   name?: string;
   capacity: number;
   status: string;
-  zone?: string;
+  zone?: string | { id: string; name: string };
 }
 
 interface Customer {
@@ -54,10 +56,10 @@ interface Order {
   notes?: string;
   createdAt: string;
   updatedAt: string;
-  table: {
+  table?: {
     id: string;
     number: number;
-    zone?: string;
+    zone?: string | { id: string; name: string };
   };
   customer?: {
     id: string;
@@ -77,9 +79,15 @@ interface Order {
   }[];
 }
 
+// Helper function to get zone name safely
+const getZoneName = (zone?: string | { id: string; name: string }): string => {
+  if (!zone) return '';
+  return typeof zone === 'string' ? zone : zone?.name || '';
+};
+
 export default function POSPage() {
   const { isAuthenticated, isLoading, user, logout } = useAuth();
-  const { state, addItem, removeItem, updateQuantity, clearCart } = useCart();
+  const { state, addItem, removeItem, updateQuantity, clearCart, setTaxRate } = useCart();
   const router = useRouter();
 
   // Data states
@@ -88,6 +96,12 @@ export default function POSPage() {
   const [tables, setTables] = useState<Table[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
+  const [restaurant, setRestaurant] = useState<{
+    name: string;
+    address?: string;
+    phone?: string;
+    image?: string;
+  } | null>(null);
 
   // Selection states
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -99,6 +113,10 @@ export default function POSPage() {
   const [showTableModal, setShowTableModal] = useState(false);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [selectedTableForQR, setSelectedTableForQR] = useState<Table | null>(null);
+  const [paidOrder, setPaidOrder] = useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchCustomer, setSearchCustomer] = useState('');
   const [activeTab, setActiveTab] = useState<'taking' | 'management'>('taking');
@@ -109,38 +127,83 @@ export default function POSPage() {
   // Fetch data
   const fetchData = useCallback(async () => {
     try {
-      const [catRes, menuRes, tableRes, custRes, orderRes] = await Promise.all([
+      const [catRes, menuRes, tableRes, custRes, orderRes, restRes] = await Promise.all([
         fetch('/api/categories'),
         fetch('/api/menu'),
         fetch('/api/tables'),
         fetch('/api/customers'),
         fetch('/api/orders'),
+        fetch('/api/restaurants/settings'),
       ]);
 
       if (catRes.ok) {
         const catData = await catRes.json();
-        setCategories(catData.categories || []);
+        // Ensure categories is always an array
+        if (Array.isArray(catData.categories)) {
+          setCategories(catData.categories);
+        } else if (Array.isArray(catData)) {
+          setCategories(catData);
+        } else {
+          setCategories([]);
+        }
       }
       if (menuRes.ok) {
         const menuData = await menuRes.json();
-        setMenuItems(menuData.menuItems || []);
+        if (Array.isArray(menuData.menuItems)) {
+          setMenuItems(menuData.menuItems);
+        } else if (Array.isArray(menuData)) {
+          setMenuItems(menuData);
+        } else {
+          setMenuItems([]);
+        }
       }
       if (tableRes.ok) {
         const tableData = await tableRes.json();
-        setTables(tableData.tables || []);
+        if (Array.isArray(tableData.tables)) {
+          setTables(tableData.tables);
+        } else if (Array.isArray(tableData)) {
+          setTables(tableData);
+        } else {
+          setTables([]);
+        }
       }
       if (custRes.ok) {
         const custData = await custRes.json();
-        setCustomers(custData.customers || []);
+        if (Array.isArray(custData.customers)) {
+          setCustomers(custData.customers);
+        } else if (Array.isArray(custData)) {
+          setCustomers(custData);
+        } else {
+          setCustomers([]);
+        }
       }
       if (orderRes.ok) {
         const orderData = await orderRes.json();
-        setOrders(orderData.orders || []);
+        if (Array.isArray(orderData.orders)) {
+          setOrders(orderData.orders);
+        } else if (Array.isArray(orderData)) {
+          setOrders(orderData);
+        } else {
+          setOrders([]);
+        }
+      }
+      if (restRes.ok) {
+        const restData = await restRes.json();
+        setRestaurant({
+          name: restData.restaurantName || 'Nhà hàng',
+          address: restData.mainBranch?.address,
+          phone: restData.mainBranch?.phone,
+          image: restData.mainBranch?.image,
+        });
+        // Set tax rate from restaurant settings
+        if (restData.taxRate) {
+          setTaxRate(restData.taxRate);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
     }
-  }, []);
+  }, [setTaxRate]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -149,6 +212,39 @@ export default function POSPage() {
       fetchData();
     }
   }, [isAuthenticated, isLoading, router, fetchData]);
+
+  // Auto-refresh tax rate and customer data every 30 seconds to catch any updates from admin
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(async () => {
+      try {
+        // Fetch latest restaurant settings for tax rate
+        const restRes = await fetch('/api/restaurants/settings');
+        if (restRes.ok) {
+          const restData = await restRes.json();
+          if (restData.taxRate) {
+            setTaxRate(restData.taxRate);
+          }
+        }
+
+        // Fetch latest customers for order count updates
+        const custRes = await fetch('/api/customers');
+        if (custRes.ok) {
+          const custData = await custRes.json();
+          if (Array.isArray(custData.customers)) {
+            setCustomers(custData.customers);
+          } else if (Array.isArray(custData)) {
+            setCustomers(custData);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to auto-refresh data:', error);
+      }
+    }, 30000); // Refresh every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [isAuthenticated, setTaxRate]);
 
   // Filter menu items
   const filteredItems = menuItems.filter(item => {
@@ -165,19 +261,7 @@ export default function POSPage() {
 
   // Handle add to cart
   const handleAddItem = (item: MenuItem) => {
-    // Create a full MenuItem object for the cart
-    const menuItemForCart = {
-      id: item.id,
-      name: item.name,
-      description: item.description || '',
-      price: item.price,
-      image: item.image,
-      category: item.category.name,
-      available: item.available,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    addItem(menuItemForCart);
+    addItem(item as any);
   };
 
   // Handle checkout - Luôn tạo đơn chưa thanh toán
@@ -266,21 +350,61 @@ export default function POSPage() {
   // Handle payment for cashier
   const handlePayment = async (orderId: string, paymentMethod: string) => {
     try {
-      const response = await fetch(`/api/orders/${orderId}`, {
+      const order = orders.find(o => o.id === orderId);
+      if (!order) return;
+
+      if (paymentMethod === 'vnpay') {
+        // VNPay redirect payment
+        const response = await fetch('/api/payments/vnpay', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId,
+            orderNumber: order.orderNumber,
+            amount: order.total,
+            customerName: order.customer?.name,
+            customerPhone: order.customer?.phone,
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          // Store order ID in sessionStorage to process after return
+          sessionStorage.setItem('vnpay_order_id', orderId);
+          sessionStorage.setItem('vnpay_payment_method', paymentMethod);
+          // Redirect to VNPay
+          window.location.href = data.paymentUrl;
+        } else {
+          const error = await response.json();
+          alert(`❌ Lỗi: ${error.error || 'Không thể tạo yêu cầu thanh toán'}`);
+        }
+        return;
+      }
+
+      // Cash payment - direct process
+      const payResponse = await fetch(`/api/orders/${orderId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           paymentStatus: 'paid',
           paymentMethod: paymentMethod,
-          status: 'completed'
+          status: 'ready' // Keep as 'ready' until receipt is closed
         }),
       });
 
-      if (response.ok) {
-        alert('✅ Thanh toán thành công!');
-        fetchData(); // Refresh orders
+      if (payResponse.ok) {
+        const result = await payResponse.json();
+        const paidOrderData = result.order;
+        
+        // Store paid order and show receipt modal
+        setPaidOrder(paidOrderData);
+        setShowReceiptModal(true);
+        setShowCheckoutModal(false);
+
+        // Refresh orders
+        fetchData();
       } else {
-        const error = await response.json();
+        const error = await payResponse.json();
         alert(`❌ Lỗi: ${error.error}`);
       }
     } catch (error) {
@@ -326,18 +450,19 @@ export default function POSPage() {
     return null;
   }
 
-  if (!isAuthenticated) {
-    return null;
-  }
-
   // Determine UI mode based on role
   const isCashier = user?.role === 'cashier';
   const isWaiter = user?.role === 'waiter';
+  const isKitchen = user?.role === 'kitchen';
   const isOwnerOrManager = ['owner', 'manager'].includes(user?.role || '');
 
   // Filter orders based on role
-  const cashierOrders = orders.filter(order => order.paymentStatus === 'unpaid' && order.status === 'ready');
+  const cashierOrders = orders.filter(order => 
+    order.paymentStatus === 'unpaid' && 
+    (order.status === 'ready' || order.status === 'completed')
+  );
   const waiterOrders = orders.filter(order => ['pending', 'confirmed', 'preparing', 'ready'].includes(order.status));
+  const kitchenOrders = orders.filter(order => ['pending', 'confirmed', 'preparing'].includes(order.status));
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -346,32 +471,11 @@ export default function POSPage() {
         <div className="flex items-center gap-4">
           <h1 className="text-xl font-bold">🍽️ Restaurant POS</h1>
 
-          {/* Table Selection - Only for non-cashier */}
-          {!isCashier && (
-            <button
-              onClick={() => setShowTableModal(true)}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                selectedTable
-                  ? 'bg-green-500 hover:bg-green-600'
-                  : 'bg-primary-700 hover:bg-primary-800'
-              }`}
-            >
-              🪑 {selectedTable ? `Bàn ${selectedTable.number}` : 'Chọn bàn'}
-            </button>
-          )}
-
-          {/* Customer Selection - Only for non-cashier */}
-          {!isCashier && (
-            <button
-              onClick={() => setShowCustomerModal(true)}
-              className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
-                selectedCustomer
-                  ? 'bg-purple-500 hover:bg-purple-600'
-                  : 'bg-primary-700 hover:bg-primary-800'
-              }`}
-            >
-              👤 {selectedCustomer ? selectedCustomer.name : 'Khách hàng'}
-            </button>
+          {/* Display current table selection - Only for waiter and owner/manager */}
+          {!isCashier && !isKitchen && selectedTable && (
+            <span className="px-4 py-2 rounded-lg bg-green-500 text-white flex items-center gap-2">
+              🪑 Bàn {selectedTable.number}
+            </span>
           )}
 
           {/* Role-specific indicators */}
@@ -383,6 +487,11 @@ export default function POSPage() {
           {isWaiter && (
             <span className="text-sm bg-primary-700 px-3 py-1 rounded-full">
               🍽️ {waiterOrders.length} đơn cần xử lý
+            </span>
+          )}
+          {isKitchen && (
+            <span className="text-sm bg-primary-700 px-3 py-1 rounded-full">
+              👨‍🍳 {kitchenOrders.length} đơn cần chuẩn bị
             </span>
           )}
         </div>
@@ -545,7 +654,7 @@ export default function POSPage() {
                         <span>{formatCurrency(state.subtotal)}</span>
                       </div>
                       <div className="flex justify-between text-sm text-gray-600">
-                        <span>Thuế (8%)</span>
+                        <span>Thuế ({(state.taxRate * 100).toFixed(1)}%)</span>
                         <span>{formatCurrency(state.tax)}</span>
                       </div>
                       <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t">
@@ -580,7 +689,7 @@ export default function POSPage() {
                               <div>
                                 <h4 className="font-medium">#{formatOrderNumber(order.orderNumber)}</h4>
                                 <p className="text-sm text-gray-600">
-                                  Bàn {order.table ? order.table.number : '---'} {order.table && order.table.zone ? `· ${order.table.zone}` : ''}
+                                  Bàn {order.table ? order.table.number : '---'} {order.table && getZoneName(order.table.zone) ? `· ${getZoneName(order.table.zone)}` : ''}
                                 </p>
                               </div>
                               <span className={`inline-block px-2 py-1 text-xs rounded-full ${
@@ -733,7 +842,7 @@ export default function POSPage() {
                     <span>{formatCurrency(state.subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-sm text-gray-600">
-                    <span>Thuế (8%)</span>
+                    <span>Thuế ({(state.taxRate * 100).toFixed(1)}%)</span>
                     <span>{formatCurrency(state.tax)}</span>
                   </div>
                   <div className="flex justify-between text-lg font-bold text-gray-900 pt-2 border-t">
@@ -743,7 +852,7 @@ export default function POSPage() {
 
                   <button
                     onClick={() => setShowCheckoutModal(true)}
-                    disabled={state.items.length === 0}
+                    disabled={state.items.length === 0 || !selectedTable}
                     className="w-full py-4 bg-secondary-500 text-white font-semibold rounded-xl hover:bg-secondary-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     📋 Tạo đơn hàng {formatCurrency(state.total)}
@@ -754,30 +863,30 @@ export default function POSPage() {
           </div>
         )}
 
-        {/* Left side - Menu/Cart or Orders */}
-        <div className={`flex flex-col overflow-hidden flex-1 order-1`}>
-          {isCashier ? (
-            /* Cashier View - Orders for Payment */
+        {/* Left side - Tables/Menu/Orders */}
+        <div className={`flex flex-col overflow-hidden ${isCashier || isKitchen ? 'w-full' : isWaiter ? 'w-2/3' : 'flex-1'} order-1`}>
+          {isCashier || isKitchen ? (
+            /* Cashier/Kitchen View - Orders */
             <div className="flex-1 overflow-y-auto p-6">
-              <h2 className="text-2xl font-bold mb-6">💰 Đơn hàng chờ thanh toán</h2>
+              <h2 className="text-2xl font-bold mb-6">{isCashier ? '💰 Đơn hàng chờ thanh toán' : '👨‍🍳 Đơn hàng cần chuẩn bị'}</h2>
 
-              {cashierOrders.length === 0 ? (
+              {(isCashier ? cashierOrders : kitchenOrders).length === 0 ? (
                 <div className="bg-white rounded-lg p-12 shadow-sm">
                   <div className="text-center">
-                    <span className="text-6xl mb-4 block">💰</span>
-                    <h3 className="text-xl font-semibold text-gray-700 mb-2">Không có đơn hàng nào chờ thanh toán</h3>
-                    <p className="text-gray-500">Các đơn hàng đã sẵn sàng sẽ xuất hiện ở đây</p>
+                    <span className="text-6xl mb-4 block">{isCashier ? '💰' : '👨‍🍳'}</span>
+                    <h3 className="text-xl font-semibold text-gray-700 mb-2">{isCashier ? 'Không có đơn hàng nào chờ thanh toán' : 'Không có đơn hàng nào cần chuẩn bị'}</h3>
+                    <p className="text-gray-500">{isCashier ? 'Các đơn hàng đã sẵn sàng sẽ xuất hiện ở đây' : 'Các đơn hàng mới sẽ xuất hiện ở đây'}</p>
                   </div>
                 </div>
               ) : (
                 <div className="grid gap-4">
-                  {cashierOrders.map((order) => (
+                  {(isCashier ? cashierOrders : kitchenOrders).map((order) => (
                     <div key={order.id} className="bg-white rounded-lg shadow-sm p-6">
                       <div className="flex justify-between items-start mb-4">
                         <div>
                           <h3 className="text-lg font-semibold">#{formatOrderNumber(order.orderNumber)}</h3>
                           <p className="text-sm text-gray-600">
-                            Bàn {order.table.number} {order.table.zone && `· ${order.table.zone}`}
+                            {order.table ? `Bàn ${order.table.number} ${getZoneName(order.table.zone) ? `· ${getZoneName(order.table.zone)}` : ''}` : 'Mang về'}
                           </p>
                           {order.customer && (
                             <p className="text-sm text-gray-600">👤 {order.customer.name}</p>
@@ -807,26 +916,55 @@ export default function POSPage() {
                         </div>
                       </div>
 
-                      {/* Payment Actions */}
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => handlePayment(order.id, 'cash')}
-                          className="flex-1 bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors"
-                        >
-                          💵 Tiền mặt
-                        </button>
-                        <button
-                          onClick={() => handlePayment(order.id, 'card')}
-                          className="flex-1 bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
-                        >
-                          💳 Thẻ
-                        </button>
-                        <button
-                          onClick={() => handlePayment(order.id, 'transfer')}
-                          className="flex-1 bg-purple-500 text-white py-2 px-4 rounded-lg hover:bg-purple-600 transition-colors"
-                        >
-                          🔄 Chuyển khoản
-                        </button>
+                      {/* Payment/Kitchen Actions */}
+                      <div className="flex flex-col gap-2">
+                        {isCashier ? (
+                          /* Payment Methods for Cashier */
+                          <>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                onClick={() => handlePayment(order.id, 'cash')}
+                                className="bg-green-500 text-white py-2 px-3 rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                              >
+                                💵 Tiền mặt
+                              </button>
+                              <button
+                                onClick={() => handlePayment(order.id, 'vnpay')}
+                                className="bg-blue-600 text-white py-2 px-3 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                              >
+                                💳 VNPay
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          /* Kitchen Status Buttons */
+                          <>
+                            {order.status === 'pending' && (
+                              <button
+                                onClick={() => handleOrderStatusUpdate(order.id, 'confirmed')}
+                                className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
+                              >
+                                ✅ Xác nhận
+                              </button>
+                            )}
+                            {order.status === 'confirmed' && (
+                              <button
+                                onClick={() => handleOrderStatusUpdate(order.id, 'preparing')}
+                                className="flex-1 bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors"
+                              >
+                                👨‍🍳 Đang chuẩn bị
+                              </button>
+                            )}
+                            {order.status === 'preparing' && (
+                              <button
+                                onClick={() => handleOrderStatusUpdate(order.id, 'ready')}
+                                className="flex-1 bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors"
+                              >
+                                ✅ Sẵn sàng phục vụ
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -834,81 +972,196 @@ export default function POSPage() {
               )}
             </div>
           ) : (
-            /* Regular POS View - Menu and Cart */
+            /* Waiter View - Tables and Menu */
             <>
-              {/* Category Tabs */}
-              <div className="bg-white shadow-sm">
-                <div className="flex overflow-x-auto p-2 gap-2">
-                  <button
-                    onClick={() => setSelectedCategory(null)}
-                    className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                      selectedCategory === null
-                        ? 'bg-primary-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Tất cả
-                  </button>
-                  {categories.map((cat) => (
+              {/* Show either Tables Grid or Menu Grid */}
+              {!selectedTable ? (
+                /* Tables Grid View */
+                <div className="flex-1 overflow-y-auto p-6">
+                  {/* Restaurant Info */}
+                  {restaurant && (
+                    <div className="mb-8">
+                      <RestaurantInfo
+                        name={restaurant.name}
+                        address={restaurant.address}
+                        phone={restaurant.phone}
+                        image={restaurant.image}
+                      />
+                    </div>
+                  )}
+                  <h2 className="text-2xl font-bold mb-6">🪑 Chọn bàn để đặt hàng</h2>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                    {/* Mang về option */}
                     <button
-                      key={cat.id}
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
-                        selectedCategory === cat.id
-                          ? 'bg-primary-500 text-white'
-                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      }`}
+                      onClick={() => {
+                        const takeaway: Table = {
+                          id: 'takeaway',
+                          number: 0,
+                          capacity: 0,
+                          status: 'available',
+                        };
+                        setSelectedTable(takeaway);
+                        setShowCustomerModal(true);
+                      }}
+                      className="bg-gradient-to-br from-orange-400 to-orange-500 rounded-xl shadow-lg hover:shadow-xl hover:scale-105 transition-all p-4 text-center text-white font-bold"
                     >
-                      {cat.name}
+                      <div className="text-4xl mb-2">📦</div>
+                      <h3 className="text-base">Mang về</h3>
                     </button>
-                  ))}
-                </div>
-              </div>
 
-              {/* Menu Grid */}
-              <div className="flex-1 overflow-y-auto p-4">
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                  {filteredItems.map((item) => (
-                    <button
-                      key={item.id}
-                      onClick={() => handleAddItem(item)}
-                      className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all p-4 text-left group"
-                    >
-                      <div className="aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden">
-                        {item.image ? (
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center text-4xl">
-                            🍽️
+                    {/* Tables */}
+                    {tables.map((table) => {
+                      const zoneName = getZoneName(table.zone);
+                      const initials = zoneName
+                        ? zoneName.substring(0, 2).toUpperCase()
+                        : 'T' + table.number;
+                      
+                      const colors = [
+                        'bg-blue-500',
+                        'bg-yellow-500',
+                        'bg-green-500',
+                        'bg-red-500',
+                        'bg-purple-500',
+                        'bg-pink-500',
+                        'bg-indigo-500',
+                        'bg-cyan-500',
+                      ];
+                      const colorIndex = table.number % colors.length;
+                      const bgColor = colors[colorIndex];
+
+                      return (
+                        <button
+                          key={table.id}
+                          onClick={() => {
+                            if (table.status === 'available') {
+                              setSelectedTable(table);
+                              setShowCustomerModal(true);
+                            }
+                          }}
+                          disabled={table.status !== 'available'}
+                          className={`rounded-xl shadow-lg transition-all p-4 text-center ${
+                            table.status === 'available'
+                              ? 'bg-gray-900 hover:shadow-xl hover:scale-105 cursor-pointer border border-gray-800'
+                              : 'bg-gray-800 opacity-50 cursor-not-allowed border border-gray-700'
+                          }`}
+                        >
+                          {/* Header with table number and status */}
+                          <div className="flex justify-between items-start mb-2">
+                            <h3 className="font-bold text-white text-sm">Bàn {table.number}</h3>
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+                              table.status === 'available'
+                                ? 'bg-green-500 text-white'
+                                : 'bg-red-500 text-white'
+                            }`}>
+                              {table.status === 'available' ? '✓' : '✕'}
+                            </span>
                           </div>
-                        )}
-                      </div>
-                      <h3 className="font-medium text-gray-900 truncate">{item.name}</h3>
-                      <p className="text-sm text-gray-500 truncate">{item.category.name}</p>
-                      <p className="text-primary-600 font-bold mt-1">
-                        {formatCurrency(item.price)}
-                      </p>
-                    </button>
-                  ))}
-                </div>
 
-                {filteredItems.length === 0 && (
-                  <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-                    <span className="text-5xl mb-4">🍽️</span>
-                    <p>Không có món ăn nào</p>
+                          {/* Avatar */}
+                          <div className={`${bgColor} w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 text-white font-bold text-lg shadow-md`}>
+                            {initials}
+                          </div>
+
+                          {/* Seats */}
+                          <div className="text-center">
+                            <p className="text-xs text-gray-400">Seats: {table.capacity}</p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
+                </div>
+              ) : (
+                /* Menu Grid View - after table selected */
+                <>
+                  {/* Go Back Button */}
+                  <div className="bg-white shadow-sm border-b p-4">
+                    <button
+                      onClick={() => {
+                        setSelectedTable(null);
+                        clearCart();
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                    >
+                      ← Quay lại
+                    </button>
+                  </div>
+
+                  {/* Category Tabs */}
+                  <div className="bg-white shadow-sm">
+                    <div className="flex overflow-x-auto p-2 gap-2">
+                      <button
+                        onClick={() => setSelectedCategory(null)}
+                        className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                          selectedCategory === null
+                            ? 'bg-primary-500 text-white'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        }`}
+                      >
+                        Tất cả
+                      </button>
+                      {categories.map((cat) => (
+                        <button
+                          key={cat.id}
+                          onClick={() => setSelectedCategory(cat.id)}
+                          className={`px-4 py-2 rounded-lg font-medium whitespace-nowrap transition-colors ${
+                            selectedCategory === cat.id
+                              ? 'bg-primary-500 text-white'
+                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
+                        >
+                          {cat.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Menu Grid */}
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                      {filteredItems.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleAddItem(item)}
+                          className="bg-white rounded-xl shadow-sm hover:shadow-md transition-all p-4 text-left group"
+                        >
+                          <div className="aspect-square bg-gray-100 rounded-lg mb-3 overflow-hidden">
+                            {item.image ? (
+                              <img
+                                src={item.image}
+                                alt={item.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-4xl">
+                                🍽️
+                              </div>
+                            )}
+                          </div>
+                          <h3 className="font-medium text-gray-900 truncate">{item.name}</h3>
+                          <p className="text-sm text-gray-500 truncate">{item.category.name}</p>
+                          <p className="text-primary-600 font-bold mt-1">
+                            {formatCurrency(item.price)}
+                          </p>
+                        </button>
+                      ))}
+                    </div>
+
+                    {filteredItems.length === 0 && (
+                      <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                        <span className="text-5xl mb-4">🍽️</span>
+                        <p>Không có món ăn nào</p>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
 
-        {/* Modals - Only for non-cashier */}
-        {!isCashier && (
+        {/* Modals - Only for non-cashier and non-kitchen */}
+        {!isCashier && !isKitchen && (
           <>
             {/* Table Selection Modal */}
             {showTableModal && (
@@ -942,21 +1195,14 @@ export default function POSPage() {
                       </button>
 
                       {tables.map((table) => (
-                        <button
+                        <div
                           key={table.id}
-                          onClick={() => {
-                            if (table.status === 'available') {
-                              setSelectedTable(table);
-                              setShowTableModal(false);
-                            }
-                          }}
-                          disabled={table.status !== 'available'}
                           className={`p-4 rounded-lg border-2 transition-colors ${
                             selectedTable?.id === table.id
                               ? 'border-primary-500 bg-primary-50'
                               : table.status === 'available'
                               ? 'border-gray-200 hover:border-gray-300'
-                              : 'border-gray-200 bg-gray-100 opacity-50 cursor-not-allowed'
+                              : 'border-gray-200 bg-gray-100 opacity-50'
                           }`}
                         >
                           <div className="text-2xl mb-2">
@@ -965,12 +1211,40 @@ export default function POSPage() {
                           <p className="font-medium">Bàn {table.number}</p>
                           <p className="text-xs text-gray-500">
                             {table.capacity} người
-                            {table.zone && ` · ${table.zone}`}
+                            {getZoneName(table.zone) && ` · ${getZoneName(table.zone)}`}
                           </p>
                           {table.status !== 'available' && (
                             <p className="text-xs text-red-500 mt-1">Đang sử dụng</p>
                           )}
-                        </button>
+                          <div className="flex gap-2 mt-3">
+                            <button
+                              onClick={() => {
+                                if (table.status === 'available') {
+                                  setSelectedTable(table);
+                                  setShowTableModal(false);
+                                }
+                              }}
+                              disabled={table.status !== 'available'}
+                              className={`flex-1 px-3 py-1 rounded text-sm font-medium transition-colors ${
+                                table.status === 'available'
+                                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                              }`}
+                            >
+                              Chọn
+                            </button>
+                            <button
+                              onClick={() => {
+                                setSelectedTableForQR(table);
+                                setShowQRModal(true);
+                              }}
+                              className="px-3 py-1 bg-purple-600 text-white rounded text-sm font-medium hover:bg-purple-700"
+                              title="Hiển thị mã QR cho bàn này"
+                            >
+                              🔗 QR
+                            </button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -1071,8 +1345,8 @@ export default function POSPage() {
               </div>
             )}
 
-            {/* Checkout Modal - Only for owner/manager */}
-            {isOwnerOrManager && showCheckoutModal && (
+            {/* Checkout Modal - For waiter and owner/manager */}
+            {(!isCashier && !isKitchen) && showCheckoutModal && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-xl max-w-md w-full">
                   <div className="p-6">
@@ -1160,9 +1434,136 @@ export default function POSPage() {
                 </div>
               </div>
             )}
+
+            {/* QR Code Modal */}
+            {showQRModal && selectedTableForQR && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-xl max-w-md w-full">
+                  <div className="p-6">
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-xl font-bold">🔗 Mã QR - Bàn {selectedTableForQR.number}</h2>
+                      <button
+                        onClick={() => {
+                          setShowQRModal(false);
+                          setSelectedTableForQR(null);
+                        }}
+                        className="text-gray-400 hover:text-gray-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="bg-gray-100 rounded-lg p-6 flex items-center justify-center mb-4">
+                      <svg
+                        className="w-64 h-64 text-gray-400"
+                        fill="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path d="M3 11h8V3H3v8zm10 0h8V3h-8v8zM3 21h8v-8H3v8zm10 0h8v-8h-8v8z" />
+                      </svg>
+                    </div>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                      <p className="text-sm text-gray-600">
+                        <strong>📱 Cách sử dụng:</strong>
+                      </p>
+                      <ul className="text-sm text-gray-600 mt-2 space-y-1">
+                        <li>✓ Khách hàng quét mã QR này</li>
+                        <li>✓ Xem menu và đặt hàng từ điện thoại</li>
+                        <li>✓ Đơn hàng sẽ gửi tới bếp ngay lập tức</li>
+                      </ul>
+                    </div>
+
+                    <div className="space-y-2">
+                      <button
+                        onClick={() => {
+                          // Generate QR code for order
+                          const qrUrl = `${window.location.origin}/order?table=${selectedTableForQR.id}`;
+                          const printWindow = window.open('', '', 'height=400,width=600');
+                          if (printWindow) {
+                            printWindow.document.write(`
+                              <html>
+                              <head>
+                                <title>Mã QR - Bàn ${selectedTableForQR.number}</title>
+                              </head>
+                              <body style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:Arial;">
+                                <h2>Bàn ${selectedTableForQR.number}</h2>
+                                <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrUrl)}" />
+                                <p>Quét mã để đặt hàng</p>
+                              </body>
+                              </html>
+                            `);
+                            printWindow.document.close();
+                            printWindow.focus();
+                            printWindow.print();
+                          }
+                        }}
+                        className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+                      >
+                        🖨️ In mã QR
+                      </button>
+                      <button
+                        onClick={() => {
+                          // Copy link to clipboard
+                          const qrUrl = `${window.location.origin}/order?table=${selectedTableForQR.id}`;
+                          navigator.clipboard.writeText(qrUrl);
+                          alert('Đã sao chép link vào clipboard!');
+                        }}
+                        className="w-full py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+                      >
+                        📋 Sao chép link
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowQRModal(false);
+                          setSelectedTableForQR(null);
+                        }}
+                        className="w-full py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+                      >
+                        Đóng
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
+        )}
+
+        {/* Receipt Modal */}
+        {paidOrder && (
+          <ReceiptModal
+            isOpen={showReceiptModal}
+            onClose={async () => {
+              // Update order to 'completed' when receipt is closed (for cashier role)
+              if (isCashier && paidOrder.paymentStatus === 'paid') {
+                try {
+                  await fetch(`/api/orders/${paidOrder.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      status: 'completed'
+                    }),
+                  });
+                } catch (err) {
+                  console.error('Failed to update order status:', err);
+                }
+              }
+              setShowReceiptModal(false);
+              setPaidOrder(null);
+              clearCart();
+              fetchData(); // Refresh to remove completed order
+            }}
+            order={paidOrder}
+            restaurant={{
+              name: 'Nhà hàng',
+              address: 'Địa chỉ nhà hàng',
+              phone: '0123456789',
+            }}
+          />
         )}
       </div>
     </div>
   );
 }
+

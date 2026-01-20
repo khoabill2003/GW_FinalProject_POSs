@@ -40,6 +40,13 @@ export default function CustomersPage() {
 
   useEffect(() => {
     fetchCustomers();
+
+    // Auto-refresh customer data every 20 seconds to show updated order counts
+    const interval = setInterval(() => {
+      fetchCustomers();
+    }, 20000); // Refresh every 20 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   const fetchCustomers = async () => {
@@ -293,7 +300,7 @@ export default function CustomersPage() {
                   </td>
                   <td className="px-6 py-4">
                     <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                      {customer._count.orders} đơn
+                      {customer._count?.orders || 0} đơn
                     </span>
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">
@@ -337,7 +344,7 @@ export default function CustomersPage() {
         <div className="bg-white rounded-xl shadow-sm p-4">
           <p className="text-sm text-gray-500">Tổng số đơn</p>
           <p className="text-2xl font-bold text-blue-600">
-            {customers.reduce((sum, c) => sum + c._count.orders, 0)}
+            {customers.reduce((sum, c) => sum + (c._count?.orders || 0), 0)}
           </p>
         </div>
       </div>

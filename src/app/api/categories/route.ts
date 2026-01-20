@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { CategoryService } from '@/lib/services';
 
+export const dynamic = 'force-dynamic';
+
 // GET all categories
 export async function GET() {
   try {

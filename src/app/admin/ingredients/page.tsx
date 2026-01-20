@@ -317,7 +317,7 @@ export default function IngredientsPage() {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-center">
                   <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
-                    {ingredient._count.menuItems} món
+                    {ingredient._count?.menuItems || 0} món
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right">

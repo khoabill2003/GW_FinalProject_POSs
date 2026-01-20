@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ZoneService } from '@/lib/services';
 
+export const dynamic = 'force-dynamic';
+
 // GET all zones
 export async function GET() {
   try {
@@ -36,3 +38,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

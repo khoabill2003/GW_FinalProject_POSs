@@ -1,5 +1,6 @@
 // Ingredient Service - Business logic cho nguyên liệu
 import prisma from '@/lib/db';
+import { generateId } from '@/lib/utils';
 
 export interface CreateIngredientInput {
   name: string;
@@ -21,15 +22,6 @@ export interface UpdateIngredientInput {
 export async function getIngredients() {
   return prisma.ingredient.findMany({
     orderBy: { name: 'asc' },
-    include: {
-      menuItems: {
-        include: {
-          menuItem: {
-            select: { id: true, name: true },
-          },
-        },
-      },
-    },
   });
 }
 
@@ -37,15 +29,6 @@ export async function getIngredients() {
 export async function getIngredientById(id: string) {
   return prisma.ingredient.findUnique({
     where: { id },
-    include: {
-      menuItems: {
-        include: {
-          menuItem: {
-            select: { id: true, name: true },
-          },
-        },
-      },
-    },
   });
 }
 
@@ -68,6 +51,7 @@ export async function createIngredient(input: CreateIngredientInput) {
 
   const ingredient = await prisma.ingredient.create({
     data: {
+      id: generateId(),
       name,
       unit,
       costPrice,

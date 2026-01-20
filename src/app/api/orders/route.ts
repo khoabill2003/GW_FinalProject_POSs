@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as OrderService from '@/lib/services/order.service';
 
+export const dynamic = 'force-dynamic';
+
 // GET all orders
 export async function GET(request: NextRequest) {
   try {
@@ -40,3 +42,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+

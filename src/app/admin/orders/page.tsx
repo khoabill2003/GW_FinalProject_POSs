@@ -178,6 +178,30 @@ export default function OrdersPage() {
     }
   };
 
+  const deleteOrder = async (orderId: string) => {
+    if (!confirm('Bạn chắc chắn muốn xóa đơn hàng này?')) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setError('✅ Xóa đơn hàng thành công!');
+        setTimeout(() => setError(''), 3000);
+        fetchOrders();
+        setSelectedOrder(null);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Không thể xóa đơn hàng');
+      }
+    } catch {
+      setError('Lỗi kết nối');
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('vi-VN', {
       style: 'currency',
@@ -904,6 +928,18 @@ export default function OrdersPage() {
                 {!canCompletePayment && (
                   <div className="bg-gray-100 p-3 rounded-lg text-gray-600 text-sm">
                     💡 Chỉ Thu ngân hoặc Quản lý mới có thể xử lý thanh toán
+                  </div>
+                )}
+
+                {/* Delete Order - Chỉ Owner/Manager */}
+                {(isOwner || isManager) && (
+                  <div className="border-t pt-4 mt-4">
+                    <button
+                      onClick={() => deleteOrder(selectedOrder.id)}
+                      className="w-full px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium"
+                    >
+                      🗑️ Xóa đơn hàng
+                    </button>
                   </div>
                 )}
               </div>

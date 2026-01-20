@@ -33,6 +33,8 @@ export default function TablesPage() {
   const [modalMode, setModalMode] = useState<ModalMode>(null);
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [deleteConfirmTable, setDeleteConfirmTable] = useState<Table | null>(null);
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [selectedTableForQR, setSelectedTableForQR] = useState<Table | null>(null);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -80,50 +82,11 @@ export default function TablesPage() {
     }
   }, [successMessage]);
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'available':
-        return 'bg-green-100 text-green-700 border-green-300';
-      case 'occupied':
-        return 'bg-red-100 text-red-700 border-red-300';
-      case 'reserved':
-        return 'bg-yellow-100 text-yellow-700 border-yellow-300';
-      default:
-        return 'bg-gray-100 text-gray-700 border-gray-300';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'available':
-        return 'Trống';
-      case 'occupied':
-        return 'Đang dùng';
-      case 'reserved':
-        return 'Đã đặt';
-      default:
-        return status;
-    }
-  };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'available':
-        return '🟢';
-      case 'occupied':
-        return '🔴';
-      case 'reserved':
-        return '🟡';
-      default:
-        return '⚪';
-    }
-  };
-
   const filteredTables = filterZone === 'all'
     ? tables
-    : filterZone === 'none'
-    ? tables.filter(t => !t.zoneId)
-    : tables.filter(t => t.zoneId === filterZone);
+    : filterZone === 'booked'
+    ? tables.filter(t => t.status === 'occupied')
+    : tables;
 
   const openCreateModal = () => {
     const nextNumber = tables.length > 0 
@@ -296,7 +259,7 @@ export default function TablesPage() {
       )}
 
       {/* Filter by Zone */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 mb-6">
         <button
           onClick={() => setFilterZone('all')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
@@ -305,78 +268,104 @@ export default function TablesPage() {
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
-          Tất cả ({tables.length})
+          All ({tables.length})
         </button>
-        {zones.map((zone) => {
-          const count = tables.filter(t => t.zoneId === zone.id).length;
-          return (
-            <button
-              key={zone.id}
-              onClick={() => setFilterZone(zone.id)}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-                filterZone === zone.id
-                  ? 'bg-primary-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {zone.name} ({count})
-            </button>
-          );
-        })}
         <button
-          onClick={() => setFilterZone('none')}
+          onClick={() => setFilterZone('booked')}
           className={`px-4 py-2 rounded-lg font-medium transition-colors ${
-            filterZone === 'none'
+            filterZone === 'booked'
               ? 'bg-primary-500 text-white'
               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
           }`}
         >
-          Chưa phân khu ({tables.filter(t => !t.zoneId).length})
+          Booked ({tables.filter(t => t.status === 'occupied').length})
         </button>
       </div>
 
       {/* Tables Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-        {filteredTables.map((table) => (
-          <div
-            key={table.id}
-            className={`relative bg-white rounded-xl shadow-sm border-2 p-4 cursor-pointer hover:shadow-md transition-all ${getStatusColor(table.status)}`}
-            onClick={() => openEditModal(table)}
-          >
-            <div className="text-center">
-              <div className="text-3xl mb-2">{getStatusIcon(table.status)}</div>
-              <h3 className="font-bold text-lg">Bàn {table.number}</h3>
-              {table.name && (
-                <p className="text-sm text-gray-600 truncate">{table.name}</p>
-              )}
-              <p className="text-xs text-gray-500 mt-1">👥 {table.capacity} người</p>
-              {table.zone && (
-                <p className="text-xs mt-1 px-2 py-0.5 bg-white/50 rounded-full inline-block">
-                  🏠 {table.zone.name}
-                </p>
-              )}
-              <p className={`text-xs font-medium mt-2 px-2 py-1 rounded-full ${getStatusColor(table.status)}`}>
-                {getStatusText(table.status)}
-              </p>
-            </div>
+        {filteredTables.map((table) => {
+          // Generate avatar color and initials from zone or name
+          const initials = table.zone 
+            ? table.zone.name.substring(0, 2).toUpperCase()
+            : table.name 
+            ? table.name.substring(0, 2).toUpperCase()
+            : 'T' + table.number;
+          
+          const colors = [
+            'bg-blue-500',
+            'bg-yellow-500',
+            'bg-green-500',
+            'bg-red-500',
+            'bg-purple-500',
+            'bg-pink-500',
+            'bg-indigo-500',
+            'bg-cyan-500',
+          ];
+          const colorIndex = table.number % colors.length;
+          const bgColor = colors[colorIndex];
+          
+          return (
+            <div
+              key={table.id}
+              className="bg-gray-900 rounded-xl shadow-lg border border-gray-800 p-4 hover:shadow-xl transition-all hover:scale-105 cursor-pointer"
+              onClick={() => openEditModal(table)}
+            >
+              {/* Header with Title and Status Badge */}
+              <div className="flex justify-between items-start mb-3">
+                <h3 className="font-bold text-white text-lg">Table {table.number}</h3>
+                <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                  table.status === 'available'
+                    ? 'bg-green-500 text-white'
+                    : 'bg-yellow-500 text-white'
+                }`}>
+                  {table.status === 'available' ? 'Available' : 'Booked'}
+                </span>
+              </div>
 
-            {/* Quick Status Buttons */}
-            <div className="absolute top-2 right-2 flex gap-1">
-              {table.status !== 'available' && (
+              {/* Avatar */}
+              <div className={`${bgColor} w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3 text-white font-bold text-xl shadow-md`}>
+                {initials}
+              </div>
+
+              {/* Zone Info */}
+              {table.zone && (
+                <div className="text-center mb-2">
+                  <p className="text-xs text-gray-400">🏠 {table.zone.name}</p>
+                </div>
+              )}
+
+              {/* Seats */}
+              <div className="text-center">
+                <p className="text-xs text-gray-400">Seats: {table.capacity}</p>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex gap-2 mt-4 pt-3 border-t border-gray-700">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    updateTableStatus(table, 'available');
+                    openEditModal(table);
                   }}
-                  className="w-6 h-6 bg-green-500 text-white rounded-full text-xs hover:bg-green-600"
-                  title="Đặt trống"
+                  className="flex-1 text-xs bg-gray-700 text-white py-1.5 rounded-lg hover:bg-gray-600 transition-colors"
                 >
-                  ✓
+                  ✏️ Edit
                 </button>
-              )}
+                {table.status === 'occupied' && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateTableStatus(table, 'available');
+                    }}
+                    className="flex-1 text-xs bg-green-500 text-white py-1.5 rounded-lg hover:bg-green-600 transition-colors"
+                  >
+                    ✓ Free
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {filteredTables.length === 0 && (
@@ -493,6 +482,18 @@ export default function TablesPage() {
                     <button
                       type="button"
                       onClick={() => {
+                        setSelectedTableForQR(selectedTable);
+                        setShowQRModal(true);
+                      }}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      📱 QR Code
+                    </button>
+                  )}
+                  {modalMode === 'edit' && (
+                    <button
+                      type="button"
+                      onClick={() => {
                         closeModal();
                         setDeleteConfirmTable(selectedTable);
                       }}
@@ -543,6 +544,102 @@ export default function TablesPage() {
                 className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
               >
                 Xóa
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Modal */}
+      {showQRModal && selectedTableForQR && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-md w-full p-6 space-y-4">
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-bold">📱 Mã QR - Bàn {selectedTableForQR.number}</h2>
+              <button
+                onClick={() => {
+                  setShowQRModal(false);
+                  setSelectedTableForQR(null);
+                }}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* QR Code Image */}
+            <div className="bg-gray-100 rounded-lg p-6 flex items-center justify-center">
+              <div className="w-64 h-64 flex items-center justify-center">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+                    `${typeof window !== 'undefined' ? window.location.origin : ''}/table/${selectedTableForQR.number}`
+                  )}`}
+                  alt="QR Code"
+                  className="w-full h-full"
+                />
+              </div>
+            </div>
+
+            {/* Information */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-800">
+              <p className="font-medium">📍 URL: <code className="bg-white px-2 py-1 rounded text-xs">/table/{selectedTableForQR.number}</code></p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  // Copy QR code URL to clipboard
+                  const qrUrl = `/table/${selectedTableForQR.number}`;
+                  const fullUrl = `${typeof window !== 'undefined' ? window.location.origin : ''}${qrUrl}`;
+                  navigator.clipboard.writeText(fullUrl);
+                  alert('✅ Đã sao chép URL!');
+                }}
+                className="flex-1 py-2 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+              >
+                📋 Sao chép URL
+              </button>
+              <button
+                onClick={() => {
+                  // Print QR code
+                  const printWindow = window.open('', '', 'height=600,width=400');
+                  if (printWindow) {
+                    printWindow.document.write(`
+                      <html>
+                        <head>
+                          <title>QR Code - Bàn ${selectedTableForQR.number}</title>
+                          <style>
+                            body { margin: 0; padding: 20px; font-family: Arial; text-align: center; }
+                            h1 { margin: 0 0 20px 0; }
+                            img { max-width: 300px; }
+                          </style>
+                        </head>
+                        <body>
+                          <h1>Bàn ${selectedTableForQR.number}</h1>
+                          <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+                            `${typeof window !== 'undefined' ? window.location.origin : ''}/table/${selectedTableForQR.number}`
+                          )}" />
+                        </body>
+                      </html>
+                    `);
+                    printWindow.document.close();
+                    setTimeout(() => {
+                      printWindow.print();
+                    }, 250);
+                  }
+                }}
+                className="flex-1 py-2 px-4 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium"
+              >
+                🖨️ In
+              </button>
+              <button
+                onClick={() => {
+                  setShowQRModal(false);
+                  setSelectedTableForQR(null);
+                }}
+                className="flex-1 py-2 px-4 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium"
+              >
+                Đóng
               </button>
             </div>
           </div>

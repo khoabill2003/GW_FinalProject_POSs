@@ -32,13 +32,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // Check for existing session on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('pos_user');
+    const storedUser = sessionStorage.getItem('pos_user');
     if (storedUser) {
       try {
         const user = JSON.parse(storedUser);
         setState({ user, isLoading: false, isAuthenticated: true });
       } catch {
-        localStorage.removeItem('pos_user');
+        sessionStorage.removeItem('pos_user');
         setState({ user: null, isLoading: false, isAuthenticated: false });
       }
     } else {
@@ -57,7 +57,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const data = await response.json();
 
       if (response.ok && data.user) {
-        localStorage.setItem('pos_user', JSON.stringify(data.user));
+        sessionStorage.setItem('pos_user', JSON.stringify(data.user));
         setState({ user: data.user, isLoading: false, isAuthenticated: true });
         return { success: true };
       } else {
@@ -79,7 +79,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const data = await response.json();
 
       if (response.ok && data.user) {
-        localStorage.setItem('pos_user', JSON.stringify(data.user));
+        sessionStorage.setItem('pos_user', JSON.stringify(data.user));
         setState({ user: data.user, isLoading: false, isAuthenticated: true });
         return { success: true };
       } else {
@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('pos_user');
+    sessionStorage.removeItem('pos_user');
     setState({ user: null, isLoading: false, isAuthenticated: false });
   };
 

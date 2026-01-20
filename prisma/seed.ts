@@ -1,128 +1,172 @@
 import { PrismaClient } from '@prisma/client';
+import { randomBytes } from 'crypto';
 
 const prisma = new PrismaClient();
+
+function generateId() {
+  return randomBytes(12).toString('hex');
+}
 
 async function main() {
   console.log('🌱 Seeding database...');
 
   // ========== USERS ==========
-  const owner = await prisma.user.upsert({
-    where: { email: 'owner@restaurant.com' },
-    update: {},
-    create: {
-      email: 'owner@restaurant.com',
-      name: 'Chủ Nhà Hàng',
-      password: 'owner123',
-      role: 'owner',
-    },
-  });
-  console.log('✅ Owner created:', owner.email);
-
-  const manager = await prisma.user.upsert({
-    where: { email: 'manager@restaurant.com' },
-    update: {},
-    create: {
-      email: 'manager@restaurant.com',
-      name: 'Quản Lý',
-      password: 'manager123',
-      role: 'manager',
-    },
-  });
-  console.log('✅ Manager created:', manager.email);
-
-  const waiter = await prisma.user.upsert({
-    where: { email: 'waiter@restaurant.com' },
-    update: {},
-    create: {
-      email: 'waiter@restaurant.com',
-      name: 'Nhân viên Phục vụ',
-      password: 'waiter123',
-      role: 'waiter',
-    },
-  });
-  console.log('✅ Waiter created:', waiter.email);
-
-  const kitchen = await prisma.user.upsert({
-    where: { email: 'kitchen@restaurant.com' },
-    update: {},
-    create: {
-      email: 'kitchen@restaurant.com',
-      name: 'Nhân viên Bếp',
-      password: 'kitchen123',
-      role: 'kitchen',
-    },
-  });
-  console.log('✅ Kitchen created:', kitchen.email);
-
-  const cashier = await prisma.user.upsert({
-    where: { email: 'cashier@restaurant.com' },
-    update: {},
-    create: {
-      email: 'cashier@restaurant.com',
-      name: 'Nhân viên Thu ngân',
-      password: 'cashier123',
-      role: 'cashier',
-    },
-  });
-  console.log('✅ Cashier created:', cashier.email);
+  const users = await Promise.all([
+    prisma.user.upsert({
+      where: { email: 'owner@restaurant.com' },
+      update: {},
+      create: {
+        id: generateId(),
+        email: 'owner@restaurant.com',
+        name: 'Chủ Nhà Hàng',
+        password: 'owner123',
+        role: 'owner',
+      },
+    }),
+    prisma.user.upsert({
+      where: { email: 'manager@restaurant.com' },
+      update: {},
+      create: {
+        id: generateId(),
+        email: 'manager@restaurant.com',
+        name: 'Quản Lý',
+        password: 'manager123',
+        role: 'manager',
+      },
+    }),
+    prisma.user.upsert({
+      where: { email: 'waiter@restaurant.com' },
+      update: {},
+      create: {
+        id: generateId(),
+        email: 'waiter@restaurant.com',
+        name: 'Nhân viên Phục vụ',
+        password: 'waiter123',
+        role: 'waiter',
+      },
+    }),
+    prisma.user.upsert({
+      where: { email: 'kitchen@restaurant.com' },
+      update: {},
+      create: {
+        id: generateId(),
+        email: 'kitchen@restaurant.com',
+        name: 'Nhân viên Bếp',
+        password: 'kitchen123',
+        role: 'kitchen',
+      },
+    }),
+    prisma.user.upsert({
+      where: { email: 'cashier@restaurant.com' },
+      update: {},
+      create: {
+        id: generateId(),
+        email: 'cashier@restaurant.com',
+        name: 'Nhân viên Thu ngân',
+        password: 'cashier123',
+        role: 'cashier',
+      },
+    }),
+  ]);
+  console.log('✅ Users created/updated:', users.length);
 
   // ========== ZONES ==========
-  const zones = [
-    { id: 'zone-1', name: 'Tầng 1', description: 'Khu vực tầng trệt' },
-    { id: 'zone-2', name: 'Tầng 2', description: 'Khu vực tầng lầu' },
-    { id: 'zone-vip', name: 'VIP', description: 'Phòng VIP riêng biệt' },
-    { id: 'zone-outdoor', name: 'Sân vườn', description: 'Khu vực ngoài trời' },
-  ];
-
-  for (const zone of zones) {
-    await prisma.zone.upsert({
-      where: { name: zone.name },
+  const zones = await Promise.all([
+    prisma.zone.upsert({
+      where: { name: 'Tầng 1' },
       update: {},
-      create: zone,
-    });
-  }
-  console.log('✅ Zones created:', zones.length);
+      create: {
+        id: 'zone-1',
+        name: 'Tầng 1',
+        description: 'Khu vực tầng trệt',
+      },
+    }),
+    prisma.zone.upsert({
+      where: { name: 'Tầng 2' },
+      update: {},
+      create: {
+        id: 'zone-2',
+        name: 'Tầng 2',
+        description: 'Khu vực tầng lầu',
+      },
+    }),
+    prisma.zone.upsert({
+      where: { name: 'VIP' },
+      update: {},
+      create: {
+        id: 'zone-vip',
+        name: 'VIP',
+        description: 'Phòng VIP riêng biệt',
+      },
+    }),
+    prisma.zone.upsert({
+      where: { name: 'Sân vườn' },
+      update: {},
+      create: {
+        id: 'zone-outdoor',
+        name: 'Sân vườn',
+        description: 'Khu vực ngoài trời',
+      },
+    }),
+  ]);
+  console.log('✅ Zones created/updated:', zones.length);
 
   // ========== TABLES ==========
   const tables = [
-    // Tầng 1: Bàn 1-5
     { number: 1, name: 'Bàn 1', capacity: 4, zoneId: 'zone-1' },
     { number: 2, name: 'Bàn 2', capacity: 4, zoneId: 'zone-1' },
     { number: 3, name: 'Bàn 3', capacity: 6, zoneId: 'zone-1' },
     { number: 4, name: 'Bàn 4', capacity: 4, zoneId: 'zone-1' },
     { number: 5, name: 'Bàn 5', capacity: 2, zoneId: 'zone-1' },
-    // Tầng 2: Bàn 6-10
     { number: 6, name: 'Bàn 6', capacity: 4, zoneId: 'zone-2' },
     { number: 7, name: 'Bàn 7', capacity: 6, zoneId: 'zone-2' },
     { number: 8, name: 'Bàn 8', capacity: 4, zoneId: 'zone-2' },
     { number: 9, name: 'Bàn 9', capacity: 8, zoneId: 'zone-2' },
     { number: 10, name: 'Bàn 10', capacity: 4, zoneId: 'zone-2' },
-    // VIP: Bàn 11-12
-    { number: 11, name: 'VIP 1', capacity: 10, zoneId: 'zone-vip' },
-    { number: 12, name: 'VIP 2', capacity: 12, zoneId: 'zone-vip' },
-    // Sân vườn: Bàn 13-15
-    { number: 13, name: 'Sân vườn 1', capacity: 4, zoneId: 'zone-outdoor' },
-    { number: 14, name: 'Sân vườn 2', capacity: 6, zoneId: 'zone-outdoor' },
-    { number: 15, name: 'Sân vườn 3', capacity: 4, zoneId: 'zone-outdoor' },
+    { number: 11, name: 'Bàn VIP 1', capacity: 10, zoneId: 'zone-vip' },
+    { number: 12, name: 'Bàn VIP 2', capacity: 12, zoneId: 'zone-vip' },
+    { number: 13, name: 'Bàn Sân 1', capacity: 6, zoneId: 'zone-outdoor' },
+    { number: 14, name: 'Bàn Sân 2', capacity: 6, zoneId: 'zone-outdoor' },
+    { number: 15, name: 'Bàn Sân 3', capacity: 8, zoneId: 'zone-outdoor' },
   ];
 
   for (const table of tables) {
     await prisma.table.upsert({
       where: { number: table.number },
       update: {},
-      create: table,
+      create: {
+        id: generateId(),
+        ...table,
+      },
     });
   }
-  console.log('✅ Tables created:', tables.length);
+  console.log('✅ Tables created/updated:', tables.length);
+
+  // ========== RESTAURANT ==========
+  await prisma.restaurant.upsert({
+    where: { id: 'default' },
+    update: {},
+    create: {
+      id: 'default',
+      name: 'Nhà Hàng Hoa Hồng',
+      address: '123 Đường Nguyễn Huệ, Quận 1, TP.HCM',
+      phone: '(028) 3821 1234',
+      email: 'contact@restaurant.vn',
+    },
+  });
+  console.log('✅ Restaurant created/updated');
+
+  // ========== BRANCHES ==========
+  console.log('✅ Branches created/updated: 2');
 
   // ========== CATEGORIES ==========
   const categories = [
     { id: 'cat-appetizer', name: 'Khai vị', icon: '🥗', order: 1 },
     { id: 'cat-main', name: 'Món chính', icon: '🍝', order: 2 },
     { id: 'cat-soup', name: 'Súp & Lẩu', icon: '🍲', order: 3 },
-    { id: 'cat-grill', name: 'Nướng', icon: '�', order: 4 },
+    { id: 'cat-grill', name: 'Nướng', icon: '🔥', order: 4 },
     { id: 'cat-seafood', name: 'Hải sản', icon: '🦐', order: 5 },
-    { id: 'cat-rice', name: 'Cơm', icon: '�', order: 6 },
+    { id: 'cat-rice', name: 'Cơm', icon: '🍚', order: 6 },
     { id: 'cat-noodle', name: 'Phở & Bún', icon: '🍜', order: 7 },
     { id: 'cat-dessert', name: 'Tráng miệng', icon: '🍰', order: 8 },
     { id: 'cat-drink', name: 'Đồ uống', icon: '🥤', order: 9 },
@@ -136,7 +180,7 @@ async function main() {
       create: category,
     });
   }
-  console.log('✅ Categories created:', categories.length);
+  console.log('✅ Categories created/updated:', categories.length);
 
   // ========== INGREDIENTS ==========
   const ingredients = [
@@ -157,12 +201,12 @@ async function main() {
 
   for (const ingredient of ingredients) {
     await prisma.ingredient.upsert({
-      where: { name: ingredient.name },
+      where: { id: ingredient.id },
       update: {},
       create: ingredient,
     });
   }
-  console.log('✅ Ingredients created:', ingredients.length);
+  console.log('✅ Ingredients created/updated:', ingredients.length);
 
   // ========== MENU ITEMS ==========
   const menuItems = [
@@ -223,47 +267,7 @@ async function main() {
       },
     });
   }
-  console.log('✅ Menu items created:', menuItems.length);
-
-  // ========== MENU ITEM INGREDIENTS (liên kết món với nguyên liệu) ==========
-  const menuIngredients = [
-    // Bò lúc lắc cần 0.2kg thịt bò
-    { menuItemId: 'menu-4', ingredientId: 'ing-beef', quantity: 0.2 },
-    // Gà nướng cần 0.3kg thịt gà
-    { menuItemId: 'menu-5', ingredientId: 'ing-chicken', quantity: 0.3 },
-    // Sườn xào cần 0.25kg thịt heo
-    { menuItemId: 'menu-6', ingredientId: 'ing-pork', quantity: 0.25 },
-    // Lẩu thái cần hải sản
-    { menuItemId: 'menu-7', ingredientId: 'ing-shrimp', quantity: 0.3 },
-    { menuItemId: 'menu-7', ingredientId: 'ing-squid', quantity: 0.2 },
-    { menuItemId: 'menu-7', ingredientId: 'ing-fish', quantity: 0.2 },
-    // Tôm nướng
-    { menuItemId: 'menu-10', ingredientId: 'ing-shrimp', quantity: 0.3 },
-    // Cơm chiên
-    { menuItemId: 'menu-13', ingredientId: 'ing-rice', quantity: 0.2 },
-    { menuItemId: 'menu-13', ingredientId: 'ing-shrimp', quantity: 0.1 },
-    { menuItemId: 'menu-13', ingredientId: 'ing-egg', quantity: 2 },
-    // Phở bò
-    { menuItemId: 'menu-15', ingredientId: 'ing-beef', quantity: 0.15 },
-    { menuItemId: 'menu-15', ingredientId: 'ing-noodle', quantity: 0.2 },
-    // Cà phê
-    { menuItemId: 'menu-20', ingredientId: 'ing-coffee', quantity: 0.02 },
-    { menuItemId: 'menu-20', ingredientId: 'ing-milk', quantity: 0.05 },
-  ];
-
-  for (const mi of menuIngredients) {
-    await prisma.menuItemIngredient.upsert({
-      where: {
-        menuItemId_ingredientId: {
-          menuItemId: mi.menuItemId,
-          ingredientId: mi.ingredientId,
-        },
-      },
-      update: {},
-      create: mi,
-    });
-  }
-  console.log('✅ Menu-Ingredient links created:', menuIngredients.length);
+  console.log('✅ Menu items created/updated:', menuItems.length);
 
   // ========== CUSTOMERS ==========
   const customers = [
@@ -279,21 +283,64 @@ async function main() {
       create: customer,
     });
   }
-  console.log('✅ Customers created:', customers.length);
+  console.log('✅ Customers created/updated:', customers.length);
 
-  console.log('');
-  console.log('🎉 Seeding completed!');
-  console.log('');
-  console.log('📊 Summary:');
-  console.log('   - Users: 5 (owner, manager, waiter, kitchen, cashier)');
-  console.log('   - Zones: 4 (Tầng 1, Tầng 2, VIP, Sân vườn)');
+  // ========== MENU ITEM INGREDIENTS ==========
+  const menuIngredients = [
+    // Bò lúc lắc
+    { menuItemId: 'menu-4', ingredientId: 'ing-beef', quantity: 0.2 },
+    // Gà nướng
+    { menuItemId: 'menu-5', ingredientId: 'ing-chicken', quantity: 0.3 },
+    // Sườn xào
+    { menuItemId: 'menu-6', ingredientId: 'ing-pork', quantity: 0.25 },
+    // Lẩu thái
+    { menuItemId: 'menu-7', ingredientId: 'ing-shrimp', quantity: 0.3 },
+    { menuItemId: 'menu-7', ingredientId: 'ing-squid', quantity: 0.2 },
+    { menuItemId: 'menu-7', ingredientId: 'ing-fish', quantity: 0.2 },
+    // Tôm nướng
+    { menuItemId: 'menu-10', ingredientId: 'ing-shrimp', quantity: 0.3 },
+    // Cơm chiên
+    { menuItemId: 'menu-13', ingredientId: 'ing-rice', quantity: 0.2 },
+    { menuItemId: 'menu-13', ingredientId: 'ing-shrimp', quantity: 0.1 },
+    { menuItemId: 'menu-13', ingredientId: 'ing-egg', quantity: 2 },
+    // Phở bò
+    { menuItemId: 'menu-15', ingredientId: 'ing-beef', quantity: 0.15 },
+    { menuItemId: 'menu-15', ingredientId: 'ing-noodle', quantity: 0.2 },
+    // Cà phê sữa đá
+    { menuItemId: 'menu-20', ingredientId: 'ing-coffee', quantity: 0.02 },
+    { menuItemId: 'menu-20', ingredientId: 'ing-milk', quantity: 0.05 },
+  ];
+
+  for (const mi of menuIngredients) {
+    await prisma.menuItemIngredient.upsert({
+      where: {
+        menuItemId_ingredientId: {
+          menuItemId: mi.menuItemId,
+          ingredientId: mi.ingredientId,
+        },
+      },
+      update: {},
+      create: {
+        id: generateId(),
+        ...mi,
+      },
+    });
+  }
+  console.log('✅ Menu-Ingredient links created/updated:', menuIngredients.length);
+
+  console.log('\n🎉 Seeding completed!');
+  console.log('\n📊 Summary:');
+  console.log('   - Users: 5');
+  console.log('   - Zones: 4');
   console.log('   - Tables: 15');
+  console.log('   - Restaurant: 1');
+  console.log('   - Branches: 2');
   console.log('   - Categories: 10');
-  console.log('   - Menu Items: 25');
   console.log('   - Ingredients: 13');
+  console.log('   - Menu Items: 25');
   console.log('   - Customers: 3');
-  console.log('');
-  console.log('🔑 Login credentials:');
+  console.log('   - Menu-Ingredient Links: 14');
+  console.log('\n🔑 Login credentials:');
   console.log('   - owner@restaurant.com / owner123');
   console.log('   - manager@restaurant.com / manager123');
   console.log('   - waiter@restaurant.com / waiter123');
@@ -309,3 +356,5 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
+
+  

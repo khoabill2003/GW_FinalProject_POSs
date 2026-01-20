@@ -1,5 +1,6 @@
 // Zone Service - Business logic cho khu vực
 import prisma from '@/lib/db';
+import { generateId } from '@/lib/utils';
 
 export interface CreateZoneInput {
   name: string;
@@ -15,11 +16,6 @@ export interface UpdateZoneInput {
 export async function getZones() {
   return prisma.zone.findMany({
     orderBy: { name: 'asc' },
-    include: {
-      _count: {
-        select: { tables: true },
-      },
-    },
   });
 }
 
@@ -52,6 +48,7 @@ export async function createZone(input: CreateZoneInput) {
 
   const zone = await prisma.zone.create({
     data: {
+      id: generateId(),
       name: name.trim(),
       description: description || null,
     },
@@ -91,19 +88,13 @@ export async function updateZone(id: string, input: UpdateZoneInput) {
 
 // Xóa khu vực
 export async function deleteZone(id: string) {
-  const zone = await prisma.zone.findUnique({
-    where: { id },
-    include: {
-      _count: { select: { tables: true } },
-    },
+  // First check if zone has tables
+  const tableCount = await prisma.table.count({
+    where: { zoneId: id }
   });
 
-  if (!zone) {
-    throw new Error('Khu vực không tồn tại');
-  }
-
-  if (zone._count.tables > 0) {
-    throw new Error(`Không thể xóa khu vực đang có ${zone._count.tables} bàn`);
+  if (tableCount > 0) {
+    throw new Error(`Không thể xóa khu vực đang có ${tableCount} bàn`);
   }
 
   await prisma.zone.delete({ where: { id } });

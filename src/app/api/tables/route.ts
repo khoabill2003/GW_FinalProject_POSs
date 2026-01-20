@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as TableService from '@/lib/services/table.service';
 
+export const dynamic = 'force-dynamic';
+
 // GET all tables
 export async function GET() {
   try {
@@ -35,3 +37,4 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
