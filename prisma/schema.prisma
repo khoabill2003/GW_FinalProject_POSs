@@ -1,132 +1,232 @@
-// Prisma Schema for Restaurant POS System
+/**
+ * ============================================================================
+ * PRISMA SCHEMA - Định nghĩa cấu trúc Database
+ * ============================================================================
+ * 
+ * PRISMA ORM LÀ GÌ?
+ * - ORM (Object-Relational Mapping): Cầu nối giữa code và database
+ * - Tự động generate TypeScript types từ schema
+ * - Query builder an toàn với TypeScript (type-safe)
+ * - Hỗ trợ migrations để quản lý thay đổi schema
+ * 
+ * CÁC COMMANDS QUAN TRỌNG:
+ * - npx prisma generate    : Generate Prisma Client từ schema
+ * - npx prisma db push     : Push schema lên database (dev)
+ * - npx prisma migrate dev : Tạo migration (production)
+ * - npx prisma studio      : GUI để xem/sửa data
+ * 
+ * RELATIONS (QUAN HỆ):
+ * - One-to-Many: 1 Category có nhiều MenuItems
+ * - Many-to-One: Nhiều Orders thuộc 1 Table
+ * - Many-to-Many: MenuItem <-> Ingredient (qua bảng MenuItemIngredient)
+ */
 
+// Generator: Tạo Prisma Client cho JavaScript/TypeScript
 generator client {
   provider = "prisma-client-js"
 }
 
+// Datasource: Cấu hình kết nối database
+// SQLite cho development, PostgreSQL cho production
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"                    // Database engine
+  url      = env("DATABASE_URL")         // Connection string từ .env
 }
 
+// ============================================================================
+// CATEGORY - Danh mục món ăn
+// ============================================================================
+// VÍ dụ: "Món chính", "Đồ uống", "Tráng miệng"
 model Category {
-  id          String     @id
-  name        String
-  description String?
-  icon        String?
-  order       Int        @default(0)
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  menuItems   MenuItem[]
+  id          String     @id              // Primary key
+  name        String                      // Tên danh mục
+  description String?                     // Mô tả (optional, ? = nullable)
+  icon        String?                     // Icon/emoji hiển thị
+  order       Int        @default(0)      // Thứ tự sắp xếp
+  createdAt   DateTime   @default(now())  // Ngày tạo (tự động)
+  updatedAt   DateTime   @updatedAt       // Ngày update (tự động)
+  menuItems   MenuItem[]                  // RELATION: 1 Category -> nhiều MenuItems
 }
 
+// ============================================================================
+// MENUITEM - Món ăn trong menu
+// ============================================================================
 model MenuItem {
   id          String               @id
-  name        String
-  description String?
-  price       Float
-  image       String?              // URL hoặc base64 của hình ảnh
-  available   Boolean              @default(true)
-  type        String               @default("single") // single (món lẻ), buffet, set_menu
-  categoryId  String
+  name        String                              // Tên món
+  description String?                             // Mô tả
+  price       Float                               // Giá bán
+  image       String?                             // URL hoặc base64 của hình ảnh
+  available   Boolean              @default(true) // Còn bán hay không
+  type        String               @default("single") // single | buffet | set_menu
+  categoryId  String                              // Foreign key đến Category
   category    Category             @relation(fields: [categoryId], references: [id])
+  // @relation: Định nghĩa quan hệ với Category
+  // fields: [categoryId] = trường foreign key trong model này
+  // references: [id] = trường primary key trong Category
   createdAt   DateTime             @default(now())
   updatedAt   DateTime             @updatedAt
-  orderItems  OrderItem[]
-  ingredients MenuItemIngredient[] // Nguyên liệu trong món
+  orderItems  OrderItem[]                         // 1 MenuItem -> nhiều OrderItems
+  ingredients MenuItemIngredient[]                // RELATION: Many-to-Many với Ingredient
 }
 
+// ============================================================================
+// ZONE - Khu vực trong nhà hàng
+// ============================================================================
+// Ví dụ: "Tầng 1", "Sân vườn", "Phòng VIP"
 model Zone {
   id          String   @id
-  name        String   @unique // VD: "Tầng 1", "Sân vườn", "VIP", "Ngoài trời"
-  description String?
-  tables      Table[]
+  name        String   @unique          // Tên khu vực (unique = không trùng)
+  description String?                   // Mô tả
+  tables      Table[]                   // 1 Zone -> nhiều Tables
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
+// ============================================================================
+// TABLE - Bàn trong nhà hàng
+// ============================================================================
 model Table {
   id        String   @id
-  number    Int      @unique
-  name      String?  // VD: "Bàn VIP 1", "Bàn ngoài trời"
-  capacity  Int      @default(4) // Số người tối đa
-  status    String   @default("available") // available, occupied, reserved
+  number    Int      @unique            // Số bàn (unique)
+  name      String?                     // Tên tuỳ chỉnh: "Bàn VIP 1"
+  capacity  Int      @default(4)        // Sức chứa (số người tối đa)
+  status    String   @default("available") // available | occupied | reserved
+  // STATUS FLOW:
+  // available -> occupied (khi có đơn hàng)
+  // occupied -> available (khi thanh toán xong)
+  // available <-> reserved (khi đặt trước)
   zoneId    String?
   zone      Zone?    @relation(fields: [zoneId], references: [id])
-  orders    Order[]
+  orders    Order[]                     // Lịch sử đơn hàng của bàn
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+// ============================================================================
+// CUSTOMER - Khách hàng
+// ============================================================================
+// Lưu thông tin để tích điểm, lịch sử mua hàng
 model Customer {
   id        String   @id
-  name      String
-  phone     String?  @unique
+  name      String                      // Tên khách hàng
+  phone     String?  @unique            // SĐT (để tra cứu nhanh)
   email     String?
   address   String?
-  notes     String?
-  orders    Order[]
+  notes     String?                     // Ghi chú: dị ứng, sở thích...
+  orders    Order[]                     // Lịch sử đơn hàng
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+// ============================================================================
+// ORDER - Đơn hàng
+// ============================================================================
+/**
+ * STATUS FLOW (trạng thái đơn):
+ *   pending -> confirmed -> preparing -> ready -> served -> completed
+ *                                                        \-> cancelled
+ * 
+ * - pending: Vừa tạo, chờ xác nhận
+ * - confirmed: Đã xác nhận, chuyển bếp
+ * - preparing: Bếp đang chuẩn bị
+ * - ready: Món đã xong, chờ mang ra
+ * - served: Đã mang ra bàn
+ * - completed: Hoàn thành (sau thanh toán)
+ * - cancelled: Đã hủy
+ */
 model Order {
   id            String      @id
-  orderNumber   Int         @unique
-  items         OrderItem[]
-  subtotal      Float
-  tax           Float
-  total         Float
-  status        String      @default("pending") // pending, confirmed, preparing, ready, served, completed, cancelled
-  paymentMethod String?     // cash, card, mobile
-  paymentStatus String      @default("unpaid") // unpaid, paid
-  tableId       String?
+  orderNumber   Int         @unique          // Số đơn hiển thị (VD: #001)
+  items         OrderItem[]                  // Các món trong đơn
+  subtotal      Float                        // Tổng trước thuế
+  tax           Float                        // Tiền thuế
+  total         Float                        // Tổng cuối
+  status        String      @default("pending") // Trạng thái đơn
+  paymentMethod String?     // cash | card | vnpay
+  paymentStatus String      @default("unpaid")  // unpaid | paid
+  tableId       String?                      // Bàn (đơn mang đi có thể null)
   table         Table?      @relation(fields: [tableId], references: [id])
-  customerId    String?
+  customerId    String?                      // Khách hàng (optional)
   customer      Customer?   @relation(fields: [customerId], references: [id])
-  notes         String?
+  notes         String?                      // Ghi chú đơn
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 }
 
+// ============================================================================
+// ORDERITEM - Món trong đơn hàng
+// ============================================================================
+/**
+ * TẠI SAO LƯU menuItemName, unitPrice RIÊNG?
+ * - Snapshot giá tại thời điểm đặt (nếu sau này sửa giá menu không ảnh hưởng)
+ * - Giữ lịch sử chính xác cho báo cáo doanh thu
+ * 
+ * STATUS:
+ * - confirmed: Đã xác nhận (bình thường)
+ * - pending_confirm: Món mới thêm khi đơn đang phục vụ (chờ staff xác nhận)
+ */
 model OrderItem {
   id           String   @id
-  orderId      String
+  orderId      String                       // Foreign key đến Order
   order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItemId   String
+  // onDelete: Cascade = Xóa Order sẽ xóa luôn các OrderItems
+  menuItemId   String                       // Link đến món gốc
   menuItem     MenuItem @relation(fields: [menuItemId], references: [id])
-  menuItemName String
-  quantity     Int
-  unitPrice    Float
-  totalPrice   Float
-  costPrice    Float    @default(0) // Giá vốn tại thời điểm đặt hàng
-  notes        String?
-  status       String   @default("confirmed") // confirmed, pending_confirm (món mới thêm khi đơn đang phục vụ)
+  menuItemName String                       // Tên món tại thời điểm đặt
+  quantity     Int                          // Số lượng
+  unitPrice    Float                        // Giá đơn vị tại thời điểm đặt
+  totalPrice   Float                        // = quantity * unitPrice
+  costPrice    Float    @default(0)         // Giá vốn (tính lợi nhuận)
+  notes        String?                      // Ghi chú: "ít đá", "không hành"
+  status       String   @default("confirmed") // confirmed | pending_confirm
   createdAt    DateTime @default(now())
 }
 
+// ============================================================================
+// USER - Người dùng hệ thống
+// ============================================================================
+/**
+ * ROLES (vai trò):
+ * - owner: Chủ nhà hàng, toàn quyền
+ * - manager: Quản lý, gần như owner
+ * - waiter: Phục vụ, tạo đơn hàng
+ * - kitchen: Bếp, xác nhận và chuẩn bị món
+ * - cashier: Thu ngân, xử lý thanh toán
+ * 
+ * PASSWORD:
+ * - Lưu dạng hash (bcrypt)
+ * - KHÔNG BAO GIỞ lưu plain text
+ */
 model User {
   id        String   @id
-  email     String   @unique
-  name      String
-  password  String
-  role      String   @default("waiter") // owner, manager, waiter, kitchen, cashier
+  email     String   @unique              // Email đăng nhập (unique)
+  name      String                        // Tên hiển thị
+  password  String                        // Password đã hash (bcrypt)
+  role      String   @default("waiter")   // owner | manager | waiter | kitchen | cashier
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+// ============================================================================
+// RESTAURANT - Thông tin nhà hàng
+// ============================================================================
+// Settings chung: tên, địa chỉ, thuế, logo...
 model Restaurant {
-  id        String   @id @default(cuid())
-  name      String
+  id        String   @id @default(cuid()) // cuid() = unique ID tự generate
+  name      String                        // Tên nhà hàng
   address   String?
   phone     String?
   email     String?
-  logo      String?
-  taxRate   Float    @default(8.0)
+  logo      String?                       // URL/base64 logo
+  taxRate   Float    @default(8.0)        // Thuế suất (%), VD: 8.0 = 8%
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
+// ============================================================================
+// BRANCH - Chi nhánh (nếu có nhiều cửa hàng)
+// ============================================================================
 model Branch {
   id        String   @id @default(cuid())
   name      String
@@ -137,29 +237,46 @@ model Branch {
   updatedAt DateTime @updatedAt
 }
 
-// Nguyên liệu
+// ============================================================================
+// INGREDIENT - Nguyên liệu (quản lý kho)
+// ============================================================================
+// Dùng để tính giá vốn và quản lý tồn kho
 model Ingredient {
   id          String               @id
-  name        String               @unique
+  name        String               @unique  // Tên nguyên liệu
   unit        String               // Đơn vị: kg, g, lít, ml, cái, gói...
   costPrice   Float                // Giá mua vào (giá vốn)
-  stock       Float                @default(0) // Số lượng tồn kho
-  minStock    Float                @default(0) // Số lượng tối thiểu cảnh báo
+  stock       Float    @default(0) // Số lượng tồn kho hiện tại
+  minStock    Float    @default(0) // Ngưỡng cảnh báo hết hàng
   description String?
-  menuItems   MenuItemIngredient[]
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
+  menuItems   MenuItemIngredient[] // Link tới các món sử dụng nguyên liệu này
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
-// Bảng trung gian liên kết Món ăn - Nguyên liệu (với số lượng sử dụng)
+// ============================================================================
+// MENUITEMINGREDIENT - Bảng trung gian Món <-> Nguyên liệu
+// ============================================================================
+/**
+ * MANY-TO-MANY RELATION:
+ * - 1 MenuItem có thể dùng nhiều Ingredients
+ * - 1 Ingredient có thể dùng trong nhiều MenuItems
+ * - Cần bảng trung gian để lưu quantity
+ * 
+ * VÍ dụ: Phở bò dùng:
+ * - Thịt bò: 0.2 kg
+ * - Bánh phở: 0.3 kg
+ * - Hành lá: 0.05 kg
+ */
 model MenuItemIngredient {
   id           String     @id
-  menuItemId   String
+  menuItemId   String                       // FK đến MenuItem
   menuItem     MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
-  ingredientId String
+  ingredientId String                       // FK đến Ingredient
   ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Cascade)
-  quantity     Float      // Số lượng nguyên liệu cần dùng cho món
+  quantity     Float      // Số lượng nguyên liệu cần dùng cho 1 món
   createdAt    DateTime   @default(now())
 
+  // Unique constraint: 1 cặp (menuItem, ingredient) chỉ xuất hiện 1 lần
   @@unique([menuItemId, ingredientId])
 }

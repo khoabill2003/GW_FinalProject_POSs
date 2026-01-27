@@ -1,7 +1,36 @@
-// Order Service - Business logic cho đơn hàng
+/**
+ * ============================================================================
+ * ORDER SERVICE - Business logic cho đơn hàng
+ * ============================================================================
+ * 
+ * SERVICE LAYER PATTERN:
+ * - Chứa tất cả business logic liên quan đến Order
+ * - Tương tác với Database qua Prisma Client
+ * - Được gọi bởi API routes
+ * - Dễ test và reuse
+ * 
+ * CÁC FUNCTIONS CHÍNH:
+ * - getOrders(): Lấy danh sách đơn với filters
+ * - getOrderById(): Lấy chi tiết 1 đơn
+ * - createOrder(): Tạo đơn mới (có tạo OrderItems)
+ * - updateOrder(): Cập nhật trạng thái đơn
+ * - getActiveOrderByTableId(): Lấy đơn đang active của bàn
+ * - addItemsToOrder(): Thêm món vào đơn đang có
+ * 
+ * STATUS FLOW:
+ * pending -> confirmed -> preparing -> ready -> served -> completed
+ *                                                     \-> cancelled
+ * 
+ * PAYMENT STATUS:
+ * unpaid -> paid (sau khi thanh toán thành công)
+ */
 import prisma from '@/lib/db';
 
-// Helper function to generate UUID
+/**
+ * Helper function tạo unique ID
+ * Format: order-{timestamp base36}{random base36}
+ * Ví dụ: order-m2abc123xyz
+ */
 function generateId() {
   return 'order-' + Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
