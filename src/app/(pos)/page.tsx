@@ -103,6 +103,7 @@ export default function POSPage() {
     address?: string;
     phone?: string;
     image?: string;
+    taxRate?: number;
   } | null>(null);
 
   // Selection states
@@ -196,6 +197,7 @@ export default function POSPage() {
           address: restData.mainBranch?.address,
           phone: restData.mainBranch?.phone,
           image: restData.mainBranch?.image,
+          taxRate: restData.taxRate || 8.0,
         });
         // Set tax rate from restaurant settings
         if (restData.taxRate) {
@@ -532,7 +534,7 @@ export default function POSPage() {
       <div className="flex h-[calc(100vh-64px)]">
         {/* Right side - Order Management (waiter) or Cart (owner/manager) */}
         {!isCashier && (
-          <div className="w-96 bg-white shadow-lg flex flex-col order-2">
+          <div className="w-96 bg-white shadow-lg flex flex-col order-2 flex-shrink-0">
             {isWaiter ? (
               
               <>
@@ -866,7 +868,7 @@ export default function POSPage() {
         )}
 
         {/* Left side - Tables/Menu/Orders */}
-        <div className={`flex flex-col overflow-hidden ${isCashier || isKitchen ? 'w-full' : isWaiter ? 'w-2/3' : 'flex-1'} order-1`}>
+        <div className={`flex flex-col overflow-hidden ${isCashier || isKitchen ? 'w-full' : 'flex-1'} order-1`}>
           {isCashier || isKitchen ? (
             /* Cashier/Kitchen View - Orders */
             <div className="flex-1 overflow-y-auto p-6">
@@ -971,30 +973,35 @@ export default function POSPage() {
                             </div>
                           </>
                         ) : (
-                          /* Kitchen Status Buttons */
+                          /* Kitchen - Only confirm pending items & serve */
                           <>
-                            {order.status === 'pending' && (
+                            {order.items.some(item => item.status === 'pending_confirm') && (
                               <button
-                                onClick={() => handleOrderStatusUpdate(order.id, 'confirmed')}
-                                className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`/api/orders/${order.id}`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ confirmItems: true }),
+                                    });
+                                    if (res.ok) {
+                                      fetchData();
+                                    }
+                                  } catch (error) {
+                                    console.error('Error confirming items:', error);
+                                  }
+                                }}
+                                className="w-full bg-yellow-500 text-white py-2 px-4 rounded-lg hover:bg-yellow-600 transition-colors font-medium mb-2"
                               >
-                                ✅ Xác nhận
+                                ⏳ Xác nhận {order.items.filter(item => item.status === 'pending_confirm').length} món mới
                               </button>
                             )}
-                            {order.status === 'confirmed' && (
+                            {order.status === 'ready' && (
                               <button
-                                onClick={() => handleOrderStatusUpdate(order.id, 'preparing')}
-                                className="flex-1 bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors"
+                                onClick={() => handleOrderStatusUpdate(order.id, 'served')}
+                                className="w-full bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors font-medium"
                               >
-                                👨‍🍳 Đang chuẩn bị
-                              </button>
-                            )}
-                            {order.status === 'preparing' && (
-                              <button
-                                onClick={() => handleOrderStatusUpdate(order.id, 'ready')}
-                                className="flex-1 bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors"
-                              >
-                                ✅ Sẵn sàng phục vụ
+                                ✅ Phục vụ xong
                               </button>
                             )}
                           </>

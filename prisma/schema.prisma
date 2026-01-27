@@ -122,6 +122,7 @@ model Restaurant {
   phone     String?
   email     String?
   logo      String?
+  taxRate   Float    @default(8.0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
