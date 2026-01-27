@@ -69,8 +69,10 @@ interface Order {
   items: {
     id: string;
     quantity: number;
-    price: number;
+    unitPrice: number;
+    totalPrice: number;
     notes?: string;
+    status?: string;
     menuItem: {
       id: string;
       name: string;
@@ -101,6 +103,7 @@ export default function POSPage() {
     address?: string;
     phone?: string;
     image?: string;
+    taxRate?: number;
   } | null>(null);
 
   // Selection states
@@ -194,6 +197,7 @@ export default function POSPage() {
           address: restData.mainBranch?.address,
           phone: restData.mainBranch?.phone,
           image: restData.mainBranch?.image,
+          taxRate: restData.taxRate || 8.0,
         });
         // Set tax rate from restaurant settings
         if (restData.taxRate) {
@@ -530,7 +534,7 @@ export default function POSPage() {
       <div className="flex h-[calc(100vh-64px)]">
         {/* Right side - Order Management (waiter) or Cart (owner/manager) */}
         {!isCashier && (
-          <div className="w-96 bg-white shadow-lg flex flex-col order-2">
+          <div className="w-96 bg-white shadow-lg flex flex-col order-2 flex-shrink-0">
             {isWaiter ? (
               
               <>
@@ -864,7 +868,7 @@ export default function POSPage() {
         )}
 
         {/* Left side - Tables/Menu/Orders */}
-        <div className={`flex flex-col overflow-hidden ${isCashier || isKitchen ? 'w-full' : isWaiter ? 'w-2/3' : 'flex-1'} order-1`}>
+        <div className={`flex flex-col overflow-hidden ${isCashier || isKitchen ? 'w-full' : 'flex-1'} order-1`}>
           {isCashier || isKitchen ? (
             /* Cashier/Kitchen View - Orders */
             <div className="flex-1 overflow-y-auto p-6">
@@ -908,12 +912,44 @@ export default function POSPage() {
                         <h4 className="font-medium mb-2">Chi tiết đơn hàng:</h4>
                         <div className="space-y-1">
                           {order.items.map((item) => (
-                            <div key={item.id} className="flex justify-between text-sm">
-                              <span>{item.quantity}x {item.menuItem.name}</span>
-                              <span>{formatCurrency(item.price * item.quantity)}</span>
+                            <div 
+                              key={item.id} 
+                              className={`flex justify-between text-sm ${item.status === 'pending_confirm' ? 'bg-yellow-100 px-2 py-1 rounded' : ''}`}
+                            >
+                              <span>
+                                {item.quantity}x {item.menuItem.name}
+                                {item.status === 'pending_confirm' && (
+                                  <span className="ml-2 text-xs text-yellow-700 font-medium">
+                                    ⏳ Chờ xác nhận
+                                  </span>
+                                )}
+                              </span>
+                              <span>{formatCurrency(item.totalPrice)}</span>
                             </div>
                           ))}
                         </div>
+                        {/* Nút xác nhận món mới nếu có món pending */}
+                        {order.items.some(item => item.status === 'pending_confirm') && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/orders/${order.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ confirmItems: true }),
+                                });
+                                if (res.ok) {
+                                  fetchData();
+                                }
+                              } catch (error) {
+                                console.error('Error confirming items:', error);
+                              }
+                            }}
+                            className="mt-3 w-full bg-yellow-500 text-white py-2 px-4 rounded-lg hover:bg-yellow-600 transition-colors text-sm font-medium"
+                          >
+                            ✅ Xác nhận {order.items.filter(item => item.status === 'pending_confirm').length} món mới gọi thêm
+                          </button>
+                        )}
                       </div>
 
                       {/* Payment/Kitchen Actions */}
@@ -937,30 +973,35 @@ export default function POSPage() {
                             </div>
                           </>
                         ) : (
-                          /* Kitchen Status Buttons */
+                          /* Kitchen - Only confirm pending items & serve */
                           <>
-                            {order.status === 'pending' && (
+                            {order.items.some(item => item.status === 'pending_confirm') && (
                               <button
-                                onClick={() => handleOrderStatusUpdate(order.id, 'confirmed')}
-                                className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors"
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(`/api/orders/${order.id}`, {
+                                      method: 'PUT',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ confirmItems: true }),
+                                    });
+                                    if (res.ok) {
+                                      fetchData();
+                                    }
+                                  } catch (error) {
+                                    console.error('Error confirming items:', error);
+                                  }
+                                }}
+                                className="w-full bg-yellow-500 text-white py-2 px-4 rounded-lg hover:bg-yellow-600 transition-colors font-medium mb-2"
                               >
-                                ✅ Xác nhận
+                                ⏳ Xác nhận {order.items.filter(item => item.status === 'pending_confirm').length} món mới
                               </button>
                             )}
-                            {order.status === 'confirmed' && (
+                            {order.status === 'ready' && (
                               <button
-                                onClick={() => handleOrderStatusUpdate(order.id, 'preparing')}
-                                className="flex-1 bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors"
+                                onClick={() => handleOrderStatusUpdate(order.id, 'served')}
+                                className="w-full bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors font-medium"
                               >
-                                👨‍🍳 Đang chuẩn bị
-                              </button>
-                            )}
-                            {order.status === 'preparing' && (
-                              <button
-                                onClick={() => handleOrderStatusUpdate(order.id, 'ready')}
-                                className="flex-1 bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors"
-                              >
-                                ✅ Sẵn sàng phục vụ
+                                ✅ Phục vụ xong
                               </button>
                             )}
                           </>

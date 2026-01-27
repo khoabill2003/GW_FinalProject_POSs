@@ -37,6 +37,39 @@ interface Customer {
   email?: string;
 }
 
+interface OrderItem {
+  id: string;
+  menuItemId: string;
+  menuItemName: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+  notes?: string;
+  status?: string; // confirmed, pending_confirm
+  menuItem?: {
+    id: string;
+    name: string;
+    image?: string;
+  };
+}
+
+interface Order {
+  id: string;
+  orderNumber: number;
+  status: string;
+  paymentStatus: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  items: OrderItem[];
+  customer?: {
+    id: string;
+    name: string;
+    phone?: string;
+  };
+  createdAt: string;
+}
+
 interface CartItem {
   menuItem: MenuItem;
   quantity: number;
@@ -52,6 +85,7 @@ export default function TableOrderingPage() {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [table, setTable] = useState<Table | null>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [activeOrder, setActiveOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -64,6 +98,7 @@ export default function TableOrderingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'menu' | 'order'>('menu');
 
   // Fetch initial data
   const fetchData = useCallback(async () => {
@@ -75,21 +110,21 @@ export default function TableOrderingPage() {
       const categoriesRes = await fetch('/api/categories');
       if (categoriesRes.ok) {
         const data = await categoriesRes.json();
-        setCategories(data);
+        setCategories(Array.isArray(data) ? data : data.categories || []);
       }
 
       // Fetch menu items
       const menuRes = await fetch('/api/menu');
       if (menuRes.ok) {
         const data = await menuRes.json();
-        setMenuItems(data);
+        setMenuItems(Array.isArray(data) ? data : data.menuItems || []);
       }
 
       // Fetch customers
       const customersRes = await fetch('/api/customers');
       if (customersRes.ok) {
         const data = await customersRes.json();
-        setCustomers(data);
+        setCustomers(Array.isArray(data) ? data : data.customers || []);
       }
 
       // Fetch table info
@@ -97,9 +132,20 @@ export default function TableOrderingPage() {
         const tablesRes = await fetch('/api/tables');
         if (tablesRes.ok) {
           const allTables = await tablesRes.json();
-          const foundTable = allTables.find((t: Table) => t.number === tableNumber);
+          const tablesList = Array.isArray(allTables) ? allTables : allTables.tables || [];
+          const foundTable = tablesList.find((t: Table) => t.number === tableNumber);
           if (foundTable) {
             setTable(foundTable);
+            
+            // Fetch active order for this table
+            const orderRes = await fetch(`/api/orders?tableId=${foundTable.id}&activeOnly=true`);
+            if (orderRes.ok) {
+              const orderData = await orderRes.json();
+              if (orderData.order) {
+                setActiveOrder(orderData.order);
+                setActiveTab('order');
+              }
+            }
           } else {
             setError('Không tìm thấy bàn.');
           }
@@ -116,6 +162,25 @@ export default function TableOrderingPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Auto-refresh order mỗi 15 giây
+  useEffect(() => {
+    if (!table?.id) return;
+    
+    const interval = setInterval(async () => {
+      try {
+        const orderRes = await fetch(`/api/orders?tableId=${table.id}&activeOnly=true`);
+        if (orderRes.ok) {
+          const orderData = await orderRes.json();
+          setActiveOrder(orderData.order || null);
+        }
+      } catch (err) {
+        console.error('Error refreshing order:', err);
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [table?.id]);
 
   // Set default category on load
   useEffect(() => {
@@ -205,11 +270,6 @@ export default function TableOrderingPage() {
       return;
     }
 
-    if (!selectedCustomer && !newCustomerName.trim()) {
-      alert('Vui lòng chọn hoặc tạo khách hàng');
-      return;
-    }
-
     if (!table) {
       alert('Không tìm thấy bàn');
       return;
@@ -218,50 +278,81 @@ export default function TableOrderingPage() {
     setIsSubmitting(true);
 
     try {
-      // Create customer if needed
-      let customerId = selectedCustomer?.id;
-      if (!customerId && newCustomerName) {
-        const customerRes = await fetch('/api/customers', {
-          method: 'POST',
+      // Nếu có order active → thêm món vào order đó
+      if (activeOrder) {
+        const response = await fetch(`/api/orders/${activeOrder.id}`, {
+          method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            name: newCustomerName,
-            phone: newCustomerPhone || undefined,
+            addItems: cart.map((item) => ({
+              menuItemId: item.menuItem.id,
+              quantity: item.quantity,
+              notes: item.notes,
+            })),
           }),
         });
 
-        if (customerRes.ok) {
-          const newCustomer = await customerRes.json();
-          customerId = newCustomer.id;
+        if (response.ok) {
+          const data = await response.json();
+          setActiveOrder(data.order);
+          setSuccessMessage('✅ Đã thêm món vào đơn hàng! Nhân viên sẽ phục vụ bạn ngay.');
+          setCart([]);
+          setActiveTab('order');
+          setTimeout(() => setSuccessMessage(''), 5000);
+        } else {
+          const err = await response.json();
+          alert(`Lỗi: ${err.error}`);
         }
-      }
-
-      // Submit order
-      const orderRes = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tableId: table.id,
-          customerId: customerId,
-          items: cart.map((item) => ({
-            menuItemId: item.menuItem.id,
-            quantity: item.quantity,
-            notes: item.notes,
-            price: item.menuItem.price,
-          })),
-        }),
-      });
-
-      if (orderRes.ok) {
-        setSuccessMessage('✅ Đơn hàng đã được gửi! Nhân viên sẽ phục vụ bạn ngay.');
-        setCart([]);
-        setSelectedCustomer(null);
-        setNewCustomerName('');
-        setNewCustomerPhone('');
-        setTimeout(() => setSuccessMessage(''), 5000);
       } else {
-        const err = await orderRes.json();
-        alert(`Lỗi: ${err.error}`);
+        // Tạo order mới
+        let customerId = selectedCustomer?.id;
+        if (!customerId && newCustomerName) {
+          const customerRes = await fetch('/api/customers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: newCustomerName,
+              phone: newCustomerPhone || undefined,
+            }),
+          });
+
+          if (customerRes.ok) {
+            const data = await customerRes.json();
+            const newCustomer = data.customer || data;
+            customerId = newCustomer.id;
+          }
+        }
+
+        // Submit order
+        const orderRes = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tableId: table.id,
+            customerId: customerId,
+            items: cart.map((item) => ({
+              menuItemId: item.menuItem.id,
+              quantity: item.quantity,
+              notes: item.notes,
+              price: item.menuItem.price,
+            })),
+          }),
+        });
+
+        if (orderRes.ok) {
+          const data = await orderRes.json();
+          setActiveOrder(data.order);
+          setSuccessMessage('✅ Đơn hàng đã được gửi! Nhân viên sẽ phục vụ bạn ngay.');
+          setCart([]);
+          setSelectedCustomer(null);
+          setNewCustomerName('');
+          setNewCustomerPhone('');
+          setActiveTab('order');
+          setTimeout(() => setSuccessMessage(''), 5000);
+        } else {
+          const err = await orderRes.json();
+          alert(`Lỗi: ${err.error}`);
+        }
       }
     } catch (err) {
       console.error('Error submitting order:', err);
@@ -269,6 +360,22 @@ export default function TableOrderingPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { text: string; color: string }> = {
+      pending: { text: 'Chờ xác nhận', color: 'bg-yellow-100 text-yellow-800' },
+      confirmed: { text: 'Đã xác nhận', color: 'bg-blue-100 text-blue-800' },
+      preparing: { text: 'Đang chuẩn bị', color: 'bg-orange-100 text-orange-800' },
+      ready: { text: 'Sẵn sàng', color: 'bg-green-100 text-green-800' },
+      completed: { text: 'Hoàn thành', color: 'bg-gray-100 text-gray-800' },
+    };
+    const badge = statusMap[status] || { text: status, color: 'bg-gray-100 text-gray-800' };
+    return (
+      <span className={`px-3 py-1 rounded-full text-sm font-medium ${badge.color}`}>
+        {badge.text}
+      </span>
+    );
   };
 
   if (isLoading) {
@@ -305,27 +412,59 @@ export default function TableOrderingPage() {
               <p className="text-gray-600 text-sm">Bàn {table.number}</p>
             </div>
             <div className="text-right">
-              <p className="text-sm text-gray-500">Sức chứa: {table.capacity} người</p>
+              {activeOrder && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Đơn #{String(activeOrder.orderNumber).padStart(4, '0')}</span>
+                  {getStatusBadge(activeOrder.status)}
+                </div>
+              )}
             </div>
+          </div>
+          
+          {/* Tab Navigation */}
+          <div className="flex gap-2 mt-4">
+            <button
+              onClick={() => setActiveTab('menu')}
+              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                activeTab === 'menu'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              📋 Menu {cart.length > 0 && `(${cart.length})`}
+            </button>
+            <button
+              onClick={() => setActiveTab('order')}
+              className={`flex-1 py-2 px-4 rounded-lg font-medium transition-colors ${
+                activeTab === 'order'
+                  ? 'bg-primary-600 text-white'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              🧾 Đơn của bàn {activeOrder && `(${activeOrder.items.length})`}
+            </button>
           </div>
         </div>
       </header>
 
       <div className="max-w-6xl mx-auto px-4 py-6">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+            {error}
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4">
+            {successMessage}
+          </div>
+        )}
+
+        {/* Menu Tab */}
+        {activeTab === 'menu' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Menu Section */}
           <div className="lg:col-span-2 space-y-6">
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-                {error}
-              </div>
-            )}
-
-            {successMessage && (
-              <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-                {successMessage}
-              </div>
-            )}
 
             {/* Category Tabs */}
             {categories.length > 0 && (
@@ -513,7 +652,12 @@ export default function TableOrderingPage() {
                     disabled={isSubmitting}
                     className="w-full py-3 px-4 bg-primary-600 text-white rounded-lg font-bold hover:bg-primary-700 disabled:bg-gray-400 transition-colors"
                   >
-                    {isSubmitting ? '⏳ Đang gửi...' : '✅ Gọi nhân viên'}
+                    {isSubmitting 
+                      ? '⏳ Đang gửi...' 
+                      : activeOrder 
+                        ? '➕ Thêm vào đơn' 
+                        : '✅ Gọi nhân viên'
+                    }
                   </button>
 
                   <button
@@ -527,6 +671,134 @@ export default function TableOrderingPage() {
             </div>
           </div>
         </div>
+        )}
+
+        {/* Order Tab - Hiển thị đơn hàng hiện tại của bàn */}
+        {activeTab === 'order' && (
+          <div className="max-w-2xl mx-auto">
+            {activeOrder ? (
+              <div className="bg-white rounded-lg shadow-md p-6 space-y-6">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">
+                      🧾 Đơn hàng #{String(activeOrder.orderNumber).padStart(4, '0')}
+                    </h2>
+                    <p className="text-gray-600 text-sm mt-1">
+                      {new Date(activeOrder.createdAt).toLocaleString('vi-VN')}
+                    </p>
+                  </div>
+                  {getStatusBadge(activeOrder.status)}
+                </div>
+
+                {activeOrder.customer && (
+                  <div className="bg-gray-50 p-3 rounded-lg">
+                    <p className="text-sm text-gray-600">
+                      👤 Khách hàng: <span className="font-medium text-gray-900">{activeOrder.customer.name}</span>
+                      {activeOrder.customer.phone && ` • ${activeOrder.customer.phone}`}
+                    </p>
+                  </div>
+                )}
+
+                {/* Order Items */}
+                <div className="space-y-3">
+                  <h3 className="font-semibold text-gray-900">Các món đã gọi:</h3>
+                  {activeOrder.items.map((item) => (
+                    <div 
+                      key={item.id} 
+                      className={`flex justify-between items-center py-3 border-b border-gray-100 ${
+                        item.status === 'pending_confirm' ? 'bg-yellow-50 -mx-2 px-2 rounded-lg border border-yellow-200' : ''
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-gray-200 rounded-lg overflow-hidden flex-shrink-0 relative">
+                          {item.menuItem?.image ? (
+                            <img src={item.menuItem.image} alt={item.menuItemName} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center">🍽️</div>
+                          )}
+                          {item.status === 'pending_confirm' && (
+                            <div className="absolute -top-1 -right-1 w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center">
+                              <span className="text-xs">⏳</span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-900">{item.menuItemName}</p>
+                            {item.status === 'pending_confirm' && (
+                              <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">
+                                Chờ xác nhận
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-600">{formatCurrency(item.unitPrice)} × {item.quantity}</p>
+                          {item.notes && <p className="text-xs text-gray-500 italic">📝 {item.notes}</p>}
+                        </div>
+                      </div>
+                      <p className="font-semibold text-primary-600">{formatCurrency(item.totalPrice)}</p>
+                    </div>
+                  ))}
+                  
+                  {/* Thông báo nếu có món chờ xác nhận */}
+                  {activeOrder.items.some(item => item.status === 'pending_confirm') && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+                      <p className="font-medium">⏳ Có món mới đang chờ nhân viên xác nhận</p>
+                      <p className="text-xs mt-1">Món sẽ được chuẩn bị sau khi nhân viên xác nhận</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Totals */}
+                <div className="border-t pt-4 space-y-2">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Tạm tính:</span>
+                    <span>{formatCurrency(activeOrder.subtotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-gray-600">
+                    <span>Thuế (8%):</span>
+                    <span>{formatCurrency(activeOrder.tax)}</span>
+                  </div>
+                  <div className="flex justify-between text-xl font-bold text-gray-900 pt-2 border-t">
+                    <span>Tổng cộng:</span>
+                    <span className="text-primary-600">{formatCurrency(activeOrder.total)}</span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setActiveTab('menu')}
+                    className="flex-1 py-3 px-4 bg-primary-600 text-white rounded-lg font-bold hover:bg-primary-700 transition-colors"
+                  >
+                    ➕ Gọi thêm món
+                  </button>
+                  <button
+                    onClick={() => fetchData()}
+                    className="py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+                  >
+                    🔄 Làm mới
+                  </button>
+                </div>
+
+                <div className="text-center text-sm text-gray-500">
+                  💳 Thanh toán tại quầy khi kết thúc
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow-md p-6 text-center">
+                <div className="text-5xl mb-4">📋</div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Chưa có đơn hàng</h2>
+                <p className="text-gray-600 mb-6">Bàn này chưa có đơn hàng nào. Hãy gọi món ngay!</p>
+                <button
+                  onClick={() => setActiveTab('menu')}
+                  className="py-3 px-6 bg-primary-600 text-white rounded-lg font-bold hover:bg-primary-700 transition-colors"
+                >
+                  📋 Xem Menu
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Customer Modal */}

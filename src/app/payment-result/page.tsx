@@ -1,15 +1,37 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Button from '@/components/ui/Button';
 
-export default function PaymentResultPage() {
+// VNPay error messages
+const vnpayErrorMessages: Record<string, string> = {
+  '00': 'Giao dịch thành công',
+  '07': 'Trừ tiền thành công. Giao dịch bị nghi ngờ (liên quan tới lừa đảo, giao dịch bất thường).',
+  '09': 'Thẻ/Tài khoản chưa đăng ký dịch vụ InternetBanking.',
+  '10': 'Xác thực thông tin thẻ/tài khoản không đúng quá 3 lần.',
+  '11': 'Đã hết hạn chờ thanh toán.',
+  '12': 'Thẻ/Tài khoản bị khóa.',
+  '13': 'Nhập sai mật khẩu xác thực giao dịch (OTP).',
+  '24': 'Khách hàng hủy giao dịch.',
+  '51': 'Tài khoản không đủ số dư.',
+  '65': 'Tài khoản đã vượt quá hạn mức giao dịch trong ngày.',
+  '75': 'Ngân hàng thanh toán đang bảo trì.',
+  '79': 'Nhập sai mật khẩu thanh toán quá số lần quy định.',
+  '99': 'Lỗi không xác định.',
+};
+
+function PaymentResultContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'failed'>('loading');
   const [message, setMessage] = useState('Đang xử lý thanh toán...');
-  const [orderId, setOrderId] = useState('');
+  const [orderInfo, setOrderInfo] = useState<{
+    orderId: string;
+    txnRef: string;
+    amount: number;
+    bankCode: string;
+  } | null>(null);
 
   useEffect(() => {
     const processPayment = async () => {
@@ -17,67 +39,72 @@ export default function PaymentResultPage() {
         // Get VNPay response parameters
         const vnp_ResponseCode = searchParams.get('vnp_ResponseCode');
         const vnp_TransactionNo = searchParams.get('vnp_TransactionNo');
+        const vnp_TxnRef = searchParams.get('vnp_TxnRef');
+        const vnp_Amount = searchParams.get('vnp_Amount');
+        const vnp_BankCode = searchParams.get('vnp_BankCode');
+        const vnp_TransactionStatus = searchParams.get('vnp_TransactionStatus');
         
         // Get orderId from sessionStorage
         const storedOrderId = sessionStorage.getItem('vnpay_order_id');
         
         if (!storedOrderId) {
-          throw new Error('Không tìm thấy mã đơn hàng');
+          // Nếu không có trong session, thử lấy từ txnRef
+          if (vnp_TxnRef) {
+            // txnRef format: orderNumber + 6 digits (VD: 12345678123456)
+            // Bỏ 6 số cuối để lấy orderNumber
+            setOrderInfo({
+              orderId: '',
+              txnRef: vnp_TxnRef,
+              amount: vnp_Amount ? parseInt(vnp_Amount) / 100 : 0,
+              bankCode: vnp_BankCode || '',
+            });
+          }
+        } else {
+          setOrderInfo({
+            orderId: storedOrderId,
+            txnRef: vnp_TxnRef || '',
+            amount: vnp_Amount ? parseInt(vnp_Amount) / 100 : 0,
+            bankCode: vnp_BankCode || '',
+          });
         }
 
-        setOrderId(storedOrderId);
-
-        // Check response code
-        if (vnp_ResponseCode === '00') {
-          // Payment successful - update order status
-          const response = await fetch(`/api/orders/${storedOrderId}`, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              paymentStatus: 'paid',
-              status: 'completed',
-              paymentMethod: 'vnpay',
-              transactionId: vnp_TransactionNo,
-            }),
-          });
-
-          if (response.ok) {
-            setStatus('success');
-            setMessage('Thanh toán thành công!');
+        // Check response code và transaction status
+        if (vnp_ResponseCode === '00' && vnp_TransactionStatus === '00') {
+          // Thanh toán thành công
+          // IPN đã xử lý cập nhật order, ở đây chỉ hiển thị kết quả
+          if (storedOrderId) {
+            // Double check: cập nhật order (backup cho IPN)
+            try {
+              await fetch(`/api/orders/${storedOrderId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  paymentStatus: 'paid',
+                  status: 'completed',
+                  paymentMethod: 'vnpay',
+                }),
+              });
+            } catch (e) {
+              console.log('Order update via return URL (IPN should have handled this)');
+            }
             
             // Clear sessionStorage
             sessionStorage.removeItem('vnpay_order_id');
             sessionStorage.removeItem('vnpay_order_data');
-            
-            // Redirect after 3 seconds
-            setTimeout(() => {
-              router.push('/');
-            }, 3000);
-          } else {
-            throw new Error('Không thể cập nhật trạng thái đơn hàng');
           }
+          
+          setStatus('success');
+          setMessage('Thanh toán thành công!');
+          
+          // Redirect after 5 seconds
+          setTimeout(() => {
+            router.push('/');
+          }, 5000);
         } else {
-          // Payment failed
+          // Thanh toán thất bại
           setStatus('failed');
-          
-          const errorMessages: { [key: string]: string } = {
-            '07': 'Trị lỗi - Xác nhận lần thứ 2 không thành công',
-            '09': 'Lỗi xác thực chữ ký khong hợp lệ',
-            '10': 'Mã đơn vị không tồn tại',
-            '11': 'Hết hạn chờ thanh toán',
-            '12': 'URL không hợp lệ - Quý khách vui lòng rời khỏi trang',
-            '13': 'Mã lỗi không xác định từ VNPAY',
-            '14': 'Sai Secret Key',
-            '15': 'Ký giao dịch không thành công',
-            '17': 'Không xác thực được địa chỉ IP',
-            '20': 'Ngoại lệ không xác định',
-            '99': 'Người dùng hủy giao dịch',
-          };
-          
           setMessage(
-            errorMessages[vnp_ResponseCode || ''] || 
+            vnpayErrorMessages[vnp_ResponseCode || '99'] || 
             `Thanh toán thất bại. Mã lỗi: ${vnp_ResponseCode || 'Không xác định'}`
           );
         }
@@ -91,6 +118,13 @@ export default function PaymentResultPage() {
 
     processPayment();
   }, [searchParams, router]);
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', {
+      style: 'currency',
+      currency: 'VND',
+    }).format(amount);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-4">
@@ -125,12 +159,34 @@ export default function PaymentResultPage() {
               </div>
             </div>
             <h2 className="text-2xl font-bold text-green-600">{message}</h2>
-            <p className="text-sm text-gray-600">Đơn hàng #{orderId} đã được xử lý</p>
-            <p className="text-xs text-gray-500">Tự động quay về màn hình chính trong 3 giây...</p>
-            <Button
-              onClick={() => router.push('/')}
-              className="w-full"
-            >
+            
+            {orderInfo && (
+              <div className="bg-gray-50 rounded-lg p-4 text-left space-y-2">
+                {orderInfo.orderId && (
+                  <p className="text-sm text-gray-600">
+                    Mã đơn hàng: <span className="font-medium text-gray-900">{orderInfo.orderId}</span>
+                  </p>
+                )}
+                {orderInfo.txnRef && (
+                  <p className="text-sm text-gray-600">
+                    Mã giao dịch: <span className="font-medium text-gray-900">{orderInfo.txnRef}</span>
+                  </p>
+                )}
+                {orderInfo.amount > 0 && (
+                  <p className="text-sm text-gray-600">
+                    Số tiền: <span className="font-medium text-green-600">{formatCurrency(orderInfo.amount)}</span>
+                  </p>
+                )}
+                {orderInfo.bankCode && (
+                  <p className="text-sm text-gray-600">
+                    Ngân hàng: <span className="font-medium text-gray-900">{orderInfo.bankCode}</span>
+                  </p>
+                )}
+              </div>
+            )}
+            
+            <p className="text-xs text-gray-500">Tự động quay về màn hình chính trong 5 giây...</p>
+            <Button onClick={() => router.push('/')} className="w-full">
               Quay về ngay
             </Button>
           </div>
@@ -157,14 +213,13 @@ export default function PaymentResultPage() {
             </div>
             <h2 className="text-xl font-bold text-red-600">Thanh toán thất bại</h2>
             <p className="text-sm text-gray-600">{message}</p>
-            {orderId && (
-              <p className="text-xs text-gray-500">Đơn hàng #{orderId}</p>
+            
+            {orderInfo?.txnRef && (
+              <p className="text-xs text-gray-500">Mã giao dịch: {orderInfo.txnRef}</p>
             )}
+            
             <div className="space-y-2">
-              <Button
-                onClick={() => router.push('/')}
-                className="w-full"
-              >
+              <Button onClick={() => router.push('/')} className="w-full">
                 Quay về trang chủ
               </Button>
               <Button
@@ -172,12 +227,27 @@ export default function PaymentResultPage() {
                 variant="outline"
                 className="w-full"
               >
-                Quay lại
+                Thử lại
               </Button>
             </div>
           </div>
         )}
       </div>
     </div>
+  );
+}
+
+export default function PaymentResultPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg shadow-lg p-8 max-w-md w-full text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Đang tải...</p>
+        </div>
+      </div>
+    }>
+      <PaymentResultContent />
+    </Suspense>
   );
 }

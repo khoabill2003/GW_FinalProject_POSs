@@ -13,8 +13,10 @@ export async function GET() {
     
     return NextResponse.json({
       restaurantName: restaurant?.name || 'Nhà Hàng',
+      taxRate: restaurant?.taxRate ?? 8.0,
       mainBranch: {
         address: restaurant?.address || '',
+        phone: restaurant?.phone || '',
         image: restaurant?.logo || '',
       },
       branches: branchesData.map(b => ({
@@ -43,13 +45,17 @@ export async function POST(request: NextRequest) {
       update: {
         name: data.restaurantName,
         address: data.mainBranch?.address,
+        phone: data.mainBranch?.phone,
         logo: data.mainBranch?.image,
+        taxRate: data.taxRate ?? 8.0,
       },
       create: {
         id: 'default',
         name: data.restaurantName,
         address: data.mainBranch?.address,
+        phone: data.mainBranch?.phone,
         logo: data.mainBranch?.image,
+        taxRate: data.taxRate ?? 8.0,
       },
     });
     
@@ -57,8 +63,10 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       restaurantName: restaurant.name,
+      taxRate: restaurant.taxRate,
       mainBranch: {
         address: restaurant.address || '',
+        phone: restaurant.phone || '',
         image: restaurant.logo || '',
       },
       branches: branches.map(b => ({
@@ -66,6 +74,7 @@ export async function POST(request: NextRequest) {
         name: b.name,
         address: b.address,
         image: b.image,
+        phone: b.phone,
       })),
     }, { status: 200 });
   } catch (error) {
