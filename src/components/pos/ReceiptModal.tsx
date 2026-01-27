@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import Modal from '@/components/ui/Modal';
 import { formatCurrency } from '@/lib/utils';
 
@@ -23,7 +23,9 @@ interface ReceiptModalProps {
         name: string;
       };
       quantity: number;
-      price: number;
+      unitPrice?: number;
+      totalPrice?: number;
+      price?: number; // Backward compatibility
     }>;
     subtotal: number;
     tax: number;
@@ -86,6 +88,13 @@ export default function ReceiptModal({
     address: '',
     phone: '',
   };
+
+  // Calculate dynamic tax rate from order data
+  const taxRate = useMemo(() => {
+    if (!order.subtotal || order.subtotal === 0) return 8;
+    const rate = (order.tax / order.subtotal) * 100;
+    return Math.round(rate * 10) / 10; // Round to 1 decimal
+  }, [order.tax, order.subtotal]);
 
   const handlePrint = () => {
     setIsPrinting(true);
@@ -309,7 +318,7 @@ export default function ReceiptModal({
                 <div class="item-row">
                   <span style="flex: 1;">${item.menuItem.name}</span>
                   <span style="text-align: center; width: 30px;">${item.quantity}</span>
-                  <span style="text-align: right; width: 50px;">${formatCurrency(item.price * item.quantity)}</span>
+                  <span style="text-align: right; width: 50px;">${formatCurrency(item.totalPrice || item.unitPrice! * item.quantity || item.price! * item.quantity)}</span>
                 </div>
                 `).join('')}
               </div>
@@ -326,7 +335,7 @@ export default function ReceiptModal({
                   <span class="total-value">0đ</span>
                 </div>
                 <div class="total-row">
-                  <span>Thuế (8%):</span>
+                  <span>Thuế (${taxRate}%):</span>
                   <span class="total-value">${formatCurrency(order.tax)}</span>
                 </div>
                 <div class="total-final">
@@ -418,7 +427,7 @@ export default function ReceiptModal({
             {order.items.map((item, idx) => (
               <div key={idx} className="flex justify-between">
                 <span>{item.quantity}x {item.menuItem.name}</span>
-                <span>{formatCurrency(item.price * item.quantity)}</span>
+                <span>{formatCurrency(item.totalPrice || item.unitPrice! * item.quantity || item.price! * item.quantity)}</span>
               </div>
             ))}
           </div>
@@ -431,7 +440,7 @@ export default function ReceiptModal({
               <span>{formatCurrency(order.subtotal)}</span>
             </div>
             <div className="flex justify-between">
-              <span>Thuế (8%):</span>
+              <span>Thuế ({taxRate}%):</span>
               <span>{formatCurrency(order.tax)}</span>
             </div>
             <div className="flex justify-between text-sm border-t border-gray-400 pt-1 mt-1">

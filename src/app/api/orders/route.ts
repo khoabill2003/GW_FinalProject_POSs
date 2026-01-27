@@ -10,6 +10,14 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || undefined;
     const paymentStatus = searchParams.get('paymentStatus') || undefined;
     const today = searchParams.get('today') === 'true';
+    const tableId = searchParams.get('tableId') || undefined;
+    const activeOnly = searchParams.get('activeOnly') === 'true';
+
+    // Nếu yêu cầu lấy order active của bàn
+    if (tableId && activeOnly) {
+      const order = await OrderService.getActiveOrderByTableId(tableId);
+      return NextResponse.json({ order });
+    }
 
     const orders = await OrderService.getOrders({
       status,

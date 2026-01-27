@@ -69,8 +69,10 @@ interface Order {
   items: {
     id: string;
     quantity: number;
-    price: number;
+    unitPrice: number;
+    totalPrice: number;
     notes?: string;
+    status?: string;
     menuItem: {
       id: string;
       name: string;
@@ -908,12 +910,44 @@ export default function POSPage() {
                         <h4 className="font-medium mb-2">Chi tiết đơn hàng:</h4>
                         <div className="space-y-1">
                           {order.items.map((item) => (
-                            <div key={item.id} className="flex justify-between text-sm">
-                              <span>{item.quantity}x {item.menuItem.name}</span>
-                              <span>{formatCurrency(item.price * item.quantity)}</span>
+                            <div 
+                              key={item.id} 
+                              className={`flex justify-between text-sm ${item.status === 'pending_confirm' ? 'bg-yellow-100 px-2 py-1 rounded' : ''}`}
+                            >
+                              <span>
+                                {item.quantity}x {item.menuItem.name}
+                                {item.status === 'pending_confirm' && (
+                                  <span className="ml-2 text-xs text-yellow-700 font-medium">
+                                    ⏳ Chờ xác nhận
+                                  </span>
+                                )}
+                              </span>
+                              <span>{formatCurrency(item.totalPrice)}</span>
                             </div>
                           ))}
                         </div>
+                        {/* Nút xác nhận món mới nếu có món pending */}
+                        {order.items.some(item => item.status === 'pending_confirm') && (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(`/api/orders/${order.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ confirmItems: true }),
+                                });
+                                if (res.ok) {
+                                  fetchData();
+                                }
+                              } catch (error) {
+                                console.error('Error confirming items:', error);
+                              }
+                            }}
+                            className="mt-3 w-full bg-yellow-500 text-white py-2 px-4 rounded-lg hover:bg-yellow-600 transition-colors text-sm font-medium"
+                          >
+                            ✅ Xác nhận {order.items.filter(item => item.status === 'pending_confirm').length} món mới gọi thêm
+                          </button>
+                        )}
                       </div>
 
                       {/* Payment/Kitchen Actions */}

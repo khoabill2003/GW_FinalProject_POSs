@@ -69,6 +69,7 @@ export async function getOrders(filters?: {
           unitPrice: true,
           totalPrice: true,
           notes: true,
+          status: true,
           menuItemId: true,
           menuItemName: true,
           menuItem: {
@@ -115,6 +116,7 @@ export async function getOrderById(id: string) {
           unitPrice: true,
           totalPrice: true,
           notes: true,
+          status: true,
           menuItemId: true,
           menuItemName: true,
           menuItem: {
@@ -353,6 +355,215 @@ export async function deleteOrder(id: string) {
 
   await prisma.order.delete({ where: { id } });
   return true;
+}
+
+// Xác nhận các món mới thêm vào order
+export async function confirmOrderItems(orderId: string, itemIds?: string[]) {
+  const existingOrder = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+
+  if (!existingOrder) {
+    throw new Error('Order không tồn tại');
+  }
+
+  // Nếu có danh sách itemIds → chỉ xác nhận những món đó
+  // Nếu không → xác nhận tất cả món pending_confirm
+  const whereClause = itemIds && itemIds.length > 0
+    ? { id: { in: itemIds }, orderId, status: 'pending_confirm' }
+    : { orderId, status: 'pending_confirm' };
+
+  await prisma.orderItem.updateMany({
+    where: whereClause,
+    data: { status: 'confirmed' },
+  });
+
+  return prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          notes: true,
+          status: true,
+          menuItemId: true,
+          menuItemName: true,
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            }
+          }
+        }
+      },
+      table: true,
+      customer: true,
+    },
+  });
+}
+
+// Lấy order active của bàn (pending, confirmed, preparing, ready)
+export async function getActiveOrderByTableId(tableId: string) {
+  return prisma.order.findFirst({
+    where: {
+      tableId,
+      status: { in: ['pending', 'confirmed', 'preparing', 'ready'] },
+      paymentStatus: 'unpaid',
+    },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          notes: true,
+          status: true,
+          menuItemId: true,
+          menuItemName: true,
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            }
+          }
+        }
+      },
+      table: {
+        select: {
+          id: true,
+          number: true,
+          zone: {
+            select: {
+              id: true,
+              name: true,
+            }
+          }
+        }
+      },
+      customer: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+        }
+      },
+    },
+  });
+}
+
+// Thêm món vào order đang có
+export async function addItemsToOrder(orderId: string, items: { menuItemId: string; quantity: number; notes?: string }[]) {
+  const existingOrder = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  });
+
+  if (!existingOrder) {
+    throw new Error('Order không tồn tại');
+  }
+
+  if (['completed', 'cancelled'].includes(existingOrder.status)) {
+    throw new Error('Không thể thêm món vào đơn đã hoàn thành hoặc đã hủy');
+  }
+
+  // Xác định status cho món mới
+  // Nếu đơn đang được phục vụ (preparing, ready, served) → món mới cần xác nhận
+  const needsConfirmation = ['preparing', 'ready', 'served'].includes(existingOrder.status);
+  const itemStatus = needsConfirmation ? 'pending_confirm' : 'confirmed';
+
+  // Calculate new items
+  let addedSubtotal = 0;
+  const newOrderItems = [];
+
+  for (const item of items) {
+    const menuItem = await prisma.menuItem.findUnique({
+      where: { id: item.menuItemId },
+      include: {
+        ingredients: {
+          include: { ingredient: true },
+        },
+      },
+    });
+
+    if (!menuItem) {
+      throw new Error(`Món ${item.menuItemId} không tồn tại`);
+    }
+
+    const itemTotal = menuItem.price * item.quantity;
+    addedSubtotal += itemTotal;
+
+    // Tính giá vốn từ nguyên liệu
+    let costPerItem = 0;
+    for (const menuIngredient of menuItem.ingredients) {
+      costPerItem += menuIngredient.quantity * menuIngredient.ingredient.costPrice;
+    }
+    const totalCost = costPerItem * item.quantity;
+
+    newOrderItems.push({
+      id: 'item-' + Date.now().toString(36) + Math.random().toString(36).substr(2),
+      menuItemId: menuItem.id,
+      menuItemName: menuItem.name,
+      quantity: item.quantity,
+      unitPrice: menuItem.price,
+      totalPrice: itemTotal,
+      costPrice: totalCost,
+      notes: item.notes || null,
+      status: itemStatus,
+      orderId: orderId,
+    });
+  }
+
+  // Recalculate totals
+  const newSubtotal = existingOrder.subtotal + addedSubtotal;
+  const newTax = newSubtotal * 0.08;
+  const newTotal = newSubtotal + newTax;
+
+  // Add items and update totals
+  await prisma.orderItem.createMany({
+    data: newOrderItems,
+  });
+
+  const updatedOrder = await prisma.order.update({
+    where: { id: orderId },
+    data: {
+      subtotal: newSubtotal,
+      tax: newTax,
+      total: newTotal,
+    },
+    include: {
+      items: {
+        select: {
+          id: true,
+          quantity: true,
+          unitPrice: true,
+          totalPrice: true,
+          notes: true,
+          status: true,
+          menuItemId: true,
+          menuItemName: true,
+          menuItem: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+            }
+          }
+        }
+      },
+      table: true,
+      customer: true,
+    },
+  });
+
+  return updatedOrder;
 }
 
 // Tính thống kê

@@ -6,12 +6,17 @@ import { formatOrderNumber } from '@/lib/utils';
 
 type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
 type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
+type ItemStatus = 'confirmed' | 'pending_confirm';
 
 interface OrderItem {
   id: string;
   quantity: number;
   price: number;
+  unitPrice?: number;
+  totalPrice?: number;
   notes?: string;
+  status?: ItemStatus;
+  menuItemName?: string;
   menuItem: {
     id: string;
     name: string;
@@ -172,6 +177,33 @@ export default function OrdersPage() {
       } else {
         const data = await response.json();
         setError(data.error || 'Không thể cập nhật thanh toán');
+      }
+    } catch {
+      setError('Lỗi kết nối');
+    }
+  };
+
+  // Xác nhận các món mới thêm vào order
+  const handleConfirmNewItems = async (orderId: string) => {
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmItems: true }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Cập nhật order trong state
+        setOrders(prev => prev.map(o => o.id === orderId ? { ...o, items: data.order.items } : o));
+        if (selectedOrder?.id === orderId) {
+          setSelectedOrder(prev => prev ? { ...prev, items: data.order.items } : null);
+        }
+        setError('✅ Đã xác nhận món mới!');
+        setTimeout(() => setError(''), 3000);
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Không thể xác nhận món');
       }
     } catch {
       setError('Lỗi kết nối');
@@ -759,30 +791,71 @@ export default function OrdersPage() {
 
               {/* Order Items */}
               <div className="border rounded-lg overflow-hidden mb-6">
-                <div className="bg-gray-50 px-4 py-2 font-medium">Danh sách món</div>
+                <div className="bg-gray-50 px-4 py-2 font-medium flex justify-between items-center">
+                  <span>Danh sách món</span>
+                  {selectedOrder.items.some(item => item.status === 'pending_confirm') && (
+                    <span className="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
+                      ⏳ Có món chờ xác nhận
+                    </span>
+                  )}
+                </div>
                 <div className="divide-y">
                   {selectedOrder.items.map((item) => (
-                    <div key={item.id} className="px-4 py-3 flex justify-between items-center">
+                    <div 
+                      key={item.id} 
+                      className={`px-4 py-3 flex justify-between items-center ${
+                        item.status === 'pending_confirm' ? 'bg-yellow-50' : ''
+                      }`}
+                    >
                       <div className="flex items-center gap-3">
-                        {item.menuItem.image && (
+                        {item.menuItem?.image && (
                           <img
                             src={item.menuItem.image}
-                            alt={item.menuItem.name}
+                            alt={item.menuItem?.name || item.menuItemName}
                             className="w-12 h-12 object-cover rounded"
                           />
                         )}
                         <div>
-                          <p className="font-medium">{item.menuItem.name}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium">{item.menuItem?.name || item.menuItemName}</p>
+                            {item.status === 'pending_confirm' && (
+                              <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 text-xs rounded-full font-medium">
+                                Mới
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm text-gray-500">x{item.quantity}</p>
                           {item.notes && (
                             <p className="text-sm text-orange-600">📝 {item.notes}</p>
                           )}
                         </div>
                       </div>
-                      <span className="font-medium">{formatCurrency(item.price * item.quantity)}</span>
+                      <span className="font-medium">
+                        {formatCurrency((item.unitPrice || item.price) * item.quantity)}
+                      </span>
                     </div>
                   ))}
                 </div>
+                
+                {/* Nút xác nhận món mới */}
+                {selectedOrder.items.some(item => item.status === 'pending_confirm') && (
+                  <div className="px-4 py-3 bg-yellow-50 border-t border-yellow-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-yellow-800">
+                          ⏳ {selectedOrder.items.filter(item => item.status === 'pending_confirm').length} món mới cần xác nhận
+                        </p>
+                        <p className="text-xs text-yellow-600">Khách hàng đã gọi thêm món qua QR</p>
+                      </div>
+                      <button
+                        onClick={() => handleConfirmNewItems(selectedOrder.id)}
+                        className="px-4 py-2 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition-colors"
+                      >
+                        ✅ Xác nhận tất cả
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Order Totals */}

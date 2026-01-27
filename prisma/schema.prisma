@@ -101,6 +101,7 @@ model OrderItem {
   totalPrice   Float
   costPrice    Float    @default(0) // Giá vốn tại thời điểm đặt hàng
   notes        String?
+  status       String   @default("confirmed") // confirmed, pending_confirm (món mới thêm khi đơn đang phục vụ)
   createdAt    DateTime @default(now())
 }
 
