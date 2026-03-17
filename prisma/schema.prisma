@@ -219,6 +219,7 @@ model Restaurant {
   phone     String?
   email     String?
   logo      String?                       // URL/base64 logo
+  favicon   String?                       // Base64 favicon (ICO/PNG/SVG)
   taxRate   Float    @default(8.0)        // Thuế suất (%), VD: 8.0 = 8%
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
