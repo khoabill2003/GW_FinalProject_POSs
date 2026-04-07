@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { TableService } from '@/lib/services';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
-// GET single table
+// GET single table (public)
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -11,7 +12,7 @@ export async function GET(
 
     if (!table) {
       return NextResponse.json(
-        { error: 'Table not found' },
+        { error: 'Bàn không tồn tại' },
         { status: 404 }
       );
     }
@@ -20,7 +21,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching table:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch table' },
+      { error: 'Lấy thông tin bàn thất bại' },
       { status: 500 }
     );
   }
@@ -32,6 +33,9 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
     const { number, name, capacity, status, zoneId } = await request.json();
     
     const table = await TableService.updateTable(params.id, {
@@ -45,7 +49,7 @@ export async function PUT(
     return NextResponse.json({ table });
   } catch (error) {
     console.error('Error updating table:', error);
-    const message = error instanceof Error ? error.message : 'Failed to update table';
+    const message = error instanceof Error ? error.message : 'Cập nhật bàn thất bại';
     const status = message.includes('không tồn tại') ? 404 : 
                    message.includes('đã tồn tại') ? 409 : 500;
     return NextResponse.json(
@@ -61,11 +65,17 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager']);
+    if (roleCheck) return roleCheck;
+
     await TableService.deleteTable(params.id);
-    return NextResponse.json({ message: 'Table deleted successfully' });
+    return NextResponse.json({ message: 'Xóa bàn thành công' });
   } catch (error) {
     console.error('Error deleting table:', error);
-    const message = error instanceof Error ? error.message : 'Failed to delete table';
+    const message = error instanceof Error ? error.message : 'Xóa bàn thất bại';
     const status = message.includes('không tồn tại') ? 404 : 
                    message.includes('đang có đơn hàng') ? 400 : 500;
     return NextResponse.json(

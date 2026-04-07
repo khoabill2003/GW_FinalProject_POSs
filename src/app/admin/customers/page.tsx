@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 
 interface Customer {
   id: string;
@@ -16,6 +17,7 @@ interface Customer {
 type ModalMode = 'create' | 'edit' | null;
 
 export default function CustomersPage() {
+  const router = useRouter();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -47,12 +49,19 @@ export default function CustomersPage() {
     }, 20000); // Refresh every 20 seconds
 
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetch('/api/customers');
+
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
+
       const data = await response.json();
 
       if (response.ok) {
@@ -66,7 +75,7 @@ export default function CustomersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
 
   const filteredCustomers = customers.filter(customer => {
     const search = searchTerm.toLowerCase();
@@ -129,6 +138,11 @@ export default function CustomersPage() {
           body: JSON.stringify(formData),
         });
 
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+
         const data = await response.json();
 
         if (response.ok) {
@@ -144,6 +158,11 @@ export default function CustomersPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
+
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
 
         const data = await response.json();
 
@@ -169,6 +188,11 @@ export default function CustomersPage() {
       const response = await fetch(`/api/customers/${deleteConfirmCustomer.id}`, {
         method: 'DELETE',
       });
+
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
 
       const data = await response.json();
 

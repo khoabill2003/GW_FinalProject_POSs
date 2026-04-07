@@ -158,11 +158,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         return { success: true };
       } else {
         // FAILED: Trả về error từ server
-        return { success: false, error: data.error || 'Login failed' };
+        return { success: false, error: data.error || 'Đăng nhập thất bại' };
       }
     } catch {
       // NETWORK ERROR: Không thể kết nối server
-      return { success: false, error: 'Network error. Please try again.' };
+      return { success: false, error: 'Lỗi mạng. Vui lòng thử lại.' };
     }
   };
 
@@ -181,16 +181,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setState({ user: data.user, isLoading: false, isAuthenticated: true });
         return { success: true };
       } else {
-        return { success: false, error: data.error || 'Registration failed' };
+        return { success: false, error: data.error || 'Đăng ký thất bại' };
       }
     } catch {
-      return { success: false, error: 'Network error. Please try again.' };
+      return { success: false, error: 'Lỗi mạng. Vui lòng thử lại.' };
     }
   };
 
   const logout = () => {
     sessionStorage.removeItem('pos_user');
     setState({ user: null, isLoading: false, isAuthenticated: false });
+    // Xóa cookie httpOnly qua API
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   };
 
   return (

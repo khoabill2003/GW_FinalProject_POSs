@@ -25,8 +25,11 @@
  */
 'use client';
 
-import React, { createContext, useContext, useReducer, ReactNode } from 'react';
+import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
 import { CartItem, MenuItem } from '@/types';
+
+// Key lưu giỏ hàng trong sessionStorage
+const CART_STORAGE_KEY = 'pos_cart';
 
 // ============================================================================
 // TYPESCRIPT INTERFACES - Định nghĩa kiểu dữ liệu
@@ -69,8 +72,8 @@ type CartAction =
   | { type: 'SET_TAX_RATE'; payload: number }
   | { type: 'CLEAR_CART' };
 
-// Thuế mặc định 8% (lưu dạng decimal 0.08)
-const DEFAULT_TAX_RATE = 0.08; // 8% default tax rate
+// Tax rate mặc định = 0, sẽ được fetch từ DB khi mount
+const DEFAULT_TAX_RATE = 0;
 
 // ============================================================================
 // HELPER FUNCTION - Tính toán tổng tiền
@@ -218,6 +221,50 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     total: 0,
     taxRate: DEFAULT_TAX_RATE,
   });
+
+  // Khôi phục giỏ hàng từ sessionStorage khi mount
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem(CART_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as CartItem[];
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            dispatch({ type: 'ADD_ITEM', payload: item.menuItem });
+            if (item.quantity > 1) {
+              dispatch({ type: 'UPDATE_QUANTITY', payload: { itemId: item.menuItem.id, quantity: item.quantity } });
+            }
+            if (item.notes) {
+              dispatch({ type: 'UPDATE_NOTES', payload: { itemId: item.menuItem.id, notes: item.notes } });
+            }
+          }
+        }
+      }
+    } catch {
+      sessionStorage.removeItem(CART_STORAGE_KEY);
+    }
+  }, []);
+
+  // Lưu giỏ hàng vào sessionStorage mỗi khi items thay đổi
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CART_STORAGE_KEY, JSON.stringify(state.items));
+    } catch {
+      // sessionStorage full hoặc không khả dụng
+    }
+  }, [state.items]);
+
+  // Fetch tax rate từ DB khi mount
+  useEffect(() => {
+    fetch('/api/restaurants/settings')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.taxRate != null) {
+          dispatch({ type: 'SET_TAX_RATE', payload: data.taxRate });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const addItem = (item: MenuItem) => dispatch({ type: 'ADD_ITEM', payload: item });
   const removeItem = (itemId: string) => dispatch({ type: 'REMOVE_ITEM', payload: itemId });

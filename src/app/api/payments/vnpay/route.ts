@@ -98,11 +98,10 @@ export async function POST(request: NextRequest) {
                    request.headers.get('x-real-ip') || 
                    '127.0.0.1';
 
-    // Set timezone Vietnam
-    process.env.TZ = 'Asia/Ho_Chi_Minh';
-    
-    // Tạo timestamp theo định dạng VNPay
-    const createDate = formatVNPayDate(new Date());
+    // Tạo timestamp theo định dạng VNPay (Vietnam timezone UTC+7)
+    const now = new Date();
+    const vnTime = new Date(now.getTime() + (7 * 60 - now.getTimezoneOffset()) * 60000);
+    const createDate = formatVNPayDate(vnTime);
     
     // Tạo mã giao dịch unique (orderNumber + 6 số cuối của timestamp)
     // Đảm bảo mỗi giao dịch có mã khác nhau, kể cả thanh toán lại

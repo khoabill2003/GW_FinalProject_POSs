@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as TableService from '@/lib/services/table.service';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
 export const dynamic = 'force-dynamic';
 
-// GET all tables
+// GET all tables (public - cho POS và khách đặt bàn)
 export async function GET() {
   try {
     const tables = await TableService.getTables();
@@ -20,6 +21,12 @@ export async function GET() {
 // POST create new table
 export async function POST(request: NextRequest) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager']);
+    if (roleCheck) return roleCheck;
+
     const body = await request.json();
     const table = await TableService.createTable({
       number: parseInt(body.number),

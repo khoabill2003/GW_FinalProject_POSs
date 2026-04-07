@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { formatCurrency, formatOrderNumber } from '@/lib/utils';
 
 interface DashboardStats {
@@ -164,6 +165,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function AdminDashboard() {
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats>({
     todaySales: 0,
     todayOrders: 0,
@@ -189,9 +191,10 @@ export default function AdminDashboard() {
     // Auto refresh every minute
     const interval = setInterval(fetchDashboardData, 60000);
     return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       // Fetch stats from API
       const [ordersRes, customersRes, tablesRes] = await Promise.all([
@@ -199,6 +202,11 @@ export default function AdminDashboard() {
         fetch('/api/customers'),
         fetch('/api/tables'),
       ]);
+
+      if ([ordersRes, customersRes, tablesRes].some((res) => res.status === 401)) {
+        router.push('/login');
+        return;
+      }
 
       const ordersData = ordersRes.ok ? await ordersRes.json() : { orders: [] };
       const customersData = customersRes.ok ? await customersRes.json() : { customers: [] };
@@ -266,14 +274,14 @@ export default function AdminDashboard() {
       const completedPaidOrders = orders.filter((o: RecentOrder) => 
         o.status === 'completed' && o.paymentStatus === 'paid'
       );
-      completedPaidOrders.forEach((order: { items?: { menuItem: { id: string; name: string }; quantity: number; price: number }[] }) => {
-        order.items?.forEach((item: { menuItem: { id: string; name: string }; quantity: number; price: number }) => {
+      completedPaidOrders.forEach((order: { items?: { menuItem: { id: string; name: string }; quantity: number; unitPrice: number; totalPrice: number }[] }) => {
+        order.items?.forEach((item: { menuItem: { id: string; name: string }; quantity: number; unitPrice: number; totalPrice: number }) => {
           const id = item.menuItem.id;
           if (!itemStats[id]) {
             itemStats[id] = { name: item.menuItem.name, quantity: 0, revenue: 0 };
           }
           itemStats[id].quantity += item.quantity;
-          itemStats[id].revenue += item.price * item.quantity;
+          itemStats[id].revenue += item.totalPrice;
         });
       });
 
@@ -288,7 +296,7 @@ export default function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   const getSalesByFilter = () => {
     switch (timeFilter) {

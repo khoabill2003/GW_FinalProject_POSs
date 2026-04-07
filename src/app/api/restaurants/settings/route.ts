@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import prisma from "@/lib/db";
+import { authenticateRequest, authorizeRoles } from "@/lib/middleware/auth";
 
 export const dynamic = "force-dynamic";
 
+// GET settings (public - cần cho tax rate v.v.)
 export async function GET() {
   try {
     const restaurant = await prisma.restaurant.findUnique({
@@ -31,7 +33,7 @@ export async function GET() {
   } catch (error) {
     console.error("Error fetching settings:", error);
     return NextResponse.json(
-      { error: "Failed to fetch settings" },
+      { error: "Lấy cài đặt thất bại" },
       { status: 500 },
     );
   }
@@ -39,6 +41,12 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
+    const roleCheck = authorizeRoles(authUser, ['owner']);
+    if (roleCheck) return roleCheck;
+
     const data = await request.json();
 
     // Build update/create payload, only include favicon if provided
@@ -87,7 +95,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Error saving settings:", error);
     return NextResponse.json(
-      { error: "Failed to save settings" },
+      { error: "Lưu cài đặt thất bại" },
       { status: 500 },
     );
   }

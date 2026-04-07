@@ -2,52 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { formatOrderNumber } from '@/lib/utils';
-
-type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
-type PaymentStatus = 'unpaid' | 'paid' | 'refunded';
-type ItemStatus = 'confirmed' | 'pending_confirm';
-
-interface OrderItem {
-  id: string;
-  quantity: number;
-  price: number;
-  unitPrice?: number;
-  totalPrice?: number;
-  notes?: string;
-  status?: ItemStatus;
-  menuItemName?: string;
-  menuItem: {
-    id: string;
-    name: string;
-    image?: string;
-  };
-}
-
-interface Order {
-  id: string;
-  orderNumber: number;
-  status: OrderStatus;
-  paymentStatus: PaymentStatus;
-  subtotal: number;
-  tax: number;
-  discount: number;
-  total: number;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-  table?: {
-    id: string;
-    number: number;
-    name?: string;
-  };
-  customer?: {
-    id: string;
-    name: string;
-    phone?: string;
-  };
-  items: OrderItem[];
-}
+import { formatOrderNumber, formatCurrency } from '@/lib/utils';
+import { OrderStatus, PaymentStatus, Order, OrderItem } from '@/types';
 
 const statusColors: Record<OrderStatus, string> = {
   pending: 'bg-yellow-100 text-yellow-800',
@@ -86,6 +42,7 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterPayment, setFilterPayment] = useState<string>('all');
@@ -199,8 +156,8 @@ export default function OrdersPage() {
         if (selectedOrder?.id === orderId) {
           setSelectedOrder(prev => prev ? { ...prev, items: data.order.items } : null);
         }
-        setError('✅ Đã xác nhận món mới!');
-        setTimeout(() => setError(''), 3000);
+        setSuccessMsg('✅ Đã xác nhận món mới!');
+        setTimeout(() => setSuccessMsg(''), 3000);
       } else {
         const data = await response.json();
         setError(data.error || 'Không thể xác nhận món');
@@ -221,8 +178,8 @@ export default function OrdersPage() {
       });
 
       if (response.ok) {
-        setError('✅ Xóa đơn hàng thành công!');
-        setTimeout(() => setError(''), 3000);
+        setSuccessMsg('✅ Xóa đơn hàng thành công!');
+        setTimeout(() => setSuccessMsg(''), 3000);
         fetchOrders();
         setSelectedOrder(null);
       } else {
@@ -232,13 +189,6 @@ export default function OrdersPage() {
     } catch {
       setError('Lỗi kết nối');
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('vi-VN', {
-      style: 'currency',
-      currency: 'VND',
-    }).format(amount);
   };
 
   const formatDate = (dateString: string) => {
@@ -477,7 +427,7 @@ export default function OrdersPage() {
                   <span>
                     <span className="font-medium">{item.quantity}x</span> {item.menuItem.name}
                   </span>
-                  <span className="text-gray-600">{formatCurrency(item.quantity * item.price)}</span>
+                  <span className="text-gray-600">{formatCurrency(item.quantity * (item.price || item.unitPrice))}</span>
                 </div>
               ))}
             </div>
@@ -607,8 +557,8 @@ export default function OrdersPage() {
                 </span>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${paymentStatusColors[order.paymentStatus]}`}>
-                  {paymentStatusLabels[order.paymentStatus]}
+                <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${paymentStatusColors[order.paymentStatus || 'unpaid']}`}>
+                  {paymentStatusLabels[order.paymentStatus || 'unpaid']}
                 </span>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
@@ -745,6 +695,19 @@ export default function OrdersPage() {
         </div>
       )}
 
+      {/* Success Message */}
+      {successMsg && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
+          {successMsg}
+          <button
+            onClick={() => setSuccessMsg('')}
+            className="float-right text-green-700 hover:text-green-900"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Main Content */}
       {isCashier 
         ? renderCashierView()
@@ -831,7 +794,7 @@ export default function OrdersPage() {
                         </div>
                       </div>
                       <span className="font-medium">
-                        {formatCurrency((item.unitPrice || item.price) * item.quantity)}
+                        {formatCurrency(item.unitPrice * item.quantity)}
                       </span>
                     </div>
                   ))}
@@ -868,10 +831,10 @@ export default function OrdersPage() {
                   <span className="text-gray-500">Thuế</span>
                   <span>{formatCurrency(selectedOrder.tax)}</span>
                 </div>
-                {selectedOrder.discount > 0 && (
+                {(selectedOrder.discount ?? 0) > 0 && (
                   <div className="flex justify-between text-green-600">
                     <span>Giảm giá</span>
-                    <span>-{formatCurrency(selectedOrder.discount)}</span>
+                    <span>-{formatCurrency(selectedOrder.discount ?? 0)}</span>
                   </div>
                 )}
                 <div className="flex justify-between text-lg font-bold border-t pt-2">
@@ -985,8 +948,8 @@ export default function OrdersPage() {
                           ↩️ Hoàn tiền
                         </button>
                       )}
-                      <span className={`px-4 py-2 rounded-lg font-medium ${paymentStatusColors[selectedOrder.paymentStatus]}`}>
-                        {paymentStatusLabels[selectedOrder.paymentStatus]}
+                      <span className={`px-4 py-2 rounded-lg font-medium ${paymentStatusColors[selectedOrder.paymentStatus || 'unpaid']}`}>
+                        {paymentStatusLabels[selectedOrder.paymentStatus || 'unpaid']}
                       </span>
                     </div>
                     {selectedOrder.paymentStatus === 'unpaid' && selectedOrder.status !== 'served' && (

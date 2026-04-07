@@ -33,6 +33,4 @@ export function formatOrderNumber(num: number): string {
   return num.toString();
 }
 
-export function generateOrderNumber(): number {
-  return Math.floor(Math.random() * 9000) + 1000;
-}
+

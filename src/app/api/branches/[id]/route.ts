@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma from '@/lib/db';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
 export async function GET(
   req: NextRequest,
@@ -29,6 +30,11 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(req);
+    if (authUser instanceof NextResponse) return authUser;
+    const roleCheck = authorizeRoles(authUser, ['owner']);
+    if (roleCheck) return roleCheck;
+
     const data = await req.json();
     const branch = await prisma.branch.update({
       where: { id: params.id },
@@ -48,6 +54,11 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(req);
+    if (authUser instanceof NextResponse) return authUser;
+    const roleCheck = authorizeRoles(authUser, ['owner']);
+    if (roleCheck) return roleCheck;
+
     await prisma.branch.delete({
       where: { id: params.id },
     });

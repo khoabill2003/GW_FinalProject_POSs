@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomBytes } from 'crypto';
-import prisma from '@/lib/prisma';
-
-function generateId() {
-  return randomBytes(12).toString('hex');
-}
+import prisma from '@/lib/db';
+import { generateId } from '@/lib/utils';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
 export async function GET(req: NextRequest) {
   try {
@@ -22,6 +19,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const authUser = authenticateRequest(req);
+    if (authUser instanceof NextResponse) return authUser;
+    const roleCheck = authorizeRoles(authUser, ['owner']);
+    if (roleCheck) return roleCheck;
+
     const data = await req.json();
     const branch = await prisma.branch.create({
       data: {

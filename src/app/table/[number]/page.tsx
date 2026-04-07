@@ -755,7 +755,7 @@ export default function TableOrderingPage() {
                     <span>{formatCurrency(activeOrder.subtotal)}</span>
                   </div>
                   <div className="flex justify-between text-gray-600">
-                    <span>Thuế (8%):</span>
+                    <span>Thuế ({activeOrder.subtotal > 0 ? Math.round((activeOrder.tax / activeOrder.subtotal) * 1000) / 10 : 0}%):</span>
                     <span>{formatCurrency(activeOrder.tax)}</span>
                   </div>
                   <div className="flex justify-between text-xl font-bold text-gray-900 pt-2 border-t">

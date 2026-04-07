@@ -7,79 +7,7 @@ import { useCart } from '@/context/CartContext';
 import { formatCurrency, formatOrderNumber } from '@/lib/utils';
 import ReceiptModal from '@/components/pos/ReceiptModal';
 import RestaurantInfo from '@/components/ui/RestaurantInfo';
-
-interface Category {
-  id: string;
-  name: string;
-}
-
-interface MenuItem {
-  id: string;
-  name: string;
-  description: string;
-  price: number;
-  image?: string;
-  category: {
-    id: string;
-    name: string;
-  };
-  categoryId: string;
-  available: boolean;
-  menuType: string;
-}
-
-interface Table {
-  id: string;
-  number: number;
-  name?: string;
-  capacity: number;
-  status: string;
-  zone?: string | { id: string; name: string };
-}
-
-interface Customer {
-  id: string;
-  name: string;
-  phone?: string;
-  email?: string;
-}
-
-interface Order {
-  id: string;
-  orderNumber: number;
-  status: string;
-  paymentStatus: string;
-  total: number;
-  subtotal: number;
-  tax: number;
-  discount: number;
-  notes?: string;
-  createdAt: string;
-  updatedAt: string;
-  table?: {
-    id: string;
-    number: number;
-    zone?: string | { id: string; name: string };
-  };
-  customer?: {
-    id: string;
-    name: string;
-    phone?: string;
-  };
-  items: {
-    id: string;
-    quantity: number;
-    unitPrice: number;
-    totalPrice: number;
-    notes?: string;
-    status?: string;
-    menuItem: {
-      id: string;
-      name: string;
-      image?: string;
-    };
-  }[];
-}
+import { Category, MenuItem, Table, Customer, Order } from '@/types';
 
 // Helper function to get zone name safely
 const getZoneName = (zone?: string | { id: string; name: string }): string => {
@@ -197,10 +125,10 @@ export default function POSPage() {
           address: restData.mainBranch?.address,
           phone: restData.mainBranch?.phone,
           image: restData.mainBranch?.image,
-          taxRate: restData.taxRate || 8.0,
+          taxRate: restData.taxRate ?? 8.0,
         });
         // Set tax rate from restaurant settings
-        if (restData.taxRate) {
+        if (restData.taxRate != null) {
           setTaxRate(restData.taxRate);
         }
       }
@@ -392,7 +320,7 @@ export default function POSPage() {
         body: JSON.stringify({
           paymentStatus: 'paid',
           paymentMethod: paymentMethod,
-          status: 'ready' // Keep as 'ready' until receipt is closed
+          status: 'completed'
         }),
       });
 
@@ -463,9 +391,9 @@ export default function POSPage() {
   // Filter orders based on role
   const cashierOrders = orders.filter(order => 
     order.paymentStatus === 'unpaid' && 
-    (order.status === 'ready' || order.status === 'completed')
+    order.status === 'served'
   );
-  const waiterOrders = orders.filter(order => ['pending', 'confirmed', 'preparing', 'ready'].includes(order.status));
+  const waiterOrders = orders.filter(order => ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(order.status) && order.status !== 'completed' && order.status !== 'cancelled');
   const kitchenOrders = orders.filter(order => ['pending', 'confirmed', 'preparing'].includes(order.status));
 
   return (
@@ -722,25 +650,44 @@ export default function POSPage() {
                                 </button>
                               )}
                               {order.status === 'confirmed' && (
-                                <button
-                                  onClick={() => handleOrderStatusUpdate(order.id, 'preparing')}
-                                  className="px-3 py-1 bg-orange-500 text-white text-xs rounded hover:bg-orange-600 transition-colors"
-                                >
-                                  👨‍🍳 Chuẩn bị
-                                </button>
+                                <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs rounded">
+                                  👨‍🍳 Chờ bếp chuẩn bị
+                                </span>
                               )}
                               {order.status === 'preparing' && (
-                                <button
-                                  onClick={() => handleOrderStatusUpdate(order.id, 'ready')}
-                                  className="px-3 py-1 bg-green-500 text-white text-xs rounded hover:bg-green-600 transition-colors"
-                                >
-                                  ✅ Sẵn sàng
-                                </button>
+                                <span className="px-3 py-1 bg-orange-100 text-orange-800 text-xs rounded">
+                                  🍳 Đang chuẩn bị
+                                </span>
                               )}
                               {order.status === 'ready' && (
-                                <span className="px-3 py-1 bg-gray-100 text-gray-800 text-xs rounded">
-                                  ⏳ Chờ thanh toán
-                                </span>
+                                <button
+                                  onClick={() => handleOrderStatusUpdate(order.id, 'served')}
+                                  className="px-3 py-1 bg-purple-500 text-white text-xs rounded hover:bg-purple-600 transition-colors"
+                                >
+                                  🍽️ Đã phục vụ
+                                </button>
+                              )}
+                              {/* Xác nhận món mới gọi thêm */}
+                              {order.items.some(item => item.status === 'pending_confirm') && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      const res = await fetch(`/api/orders/${order.id}`, {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ confirmItems: true }),
+                                      });
+                                      if (res.ok) {
+                                        fetchData();
+                                      }
+                                    } catch (error) {
+                                      console.error('Error confirming items:', error);
+                                    }
+                                  }}
+                                  className="px-3 py-1 bg-yellow-500 text-white text-xs rounded hover:bg-yellow-600 transition-colors"
+                                >
+                                  ⏳ Xác nhận {order.items.filter(item => item.status === 'pending_confirm').length} món mới
+                                </button>
                               )}
                             </div>
                           </div>
@@ -973,7 +920,7 @@ export default function POSPage() {
                             </div>
                           </>
                         ) : (
-                          /* Kitchen - Only confirm pending items & serve */
+                          /* Kitchen - Confirm pending items, start cooking, mark ready */
                           <>
                             {order.items.some(item => item.status === 'pending_confirm') && (
                               <button
@@ -996,13 +943,26 @@ export default function POSPage() {
                                 ⏳ Xác nhận {order.items.filter(item => item.status === 'pending_confirm').length} món mới
                               </button>
                             )}
-                            {order.status === 'ready' && (
+                            {order.status === 'confirmed' && (
                               <button
-                                onClick={() => handleOrderStatusUpdate(order.id, 'served')}
+                                onClick={() => handleOrderStatusUpdate(order.id, 'preparing')}
+                                className="w-full bg-orange-500 text-white py-2 px-4 rounded-lg hover:bg-orange-600 transition-colors font-medium"
+                              >
+                                🍳 Bắt đầu chuẩn bị
+                              </button>
+                            )}
+                            {order.status === 'preparing' && (
+                              <button
+                                onClick={() => handleOrderStatusUpdate(order.id, 'ready')}
                                 className="w-full bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition-colors font-medium"
                               >
-                                ✅ Phục vụ xong
+                                ✅ Sẵn sàng phục vụ
                               </button>
+                            )}
+                            {order.status === 'ready' && (
+                              <span className="w-full text-center bg-green-100 text-green-800 py-2 px-4 rounded-lg font-medium block">
+                                🔔 Chờ phục vụ ra bàn
+                              </span>
                             )}
                           </>
                         )}

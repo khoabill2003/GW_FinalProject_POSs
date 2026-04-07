@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as OrderService from '@/lib/services/order.service';
+import { authenticateRequest } from '@/lib/middleware/auth';
 
 // GET single order
 export async function GET(
@@ -20,7 +21,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching order:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch order' },
+      { error: 'Lấy thông tin đơn hàng thất bại' },
       { status: 500 }
     );
   }
@@ -32,6 +33,9 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
     const body = await request.json();
     
     // Nếu có items mới → thêm món vào order
@@ -51,7 +55,7 @@ export async function PUT(
     return NextResponse.json({ order });
   } catch (error) {
     console.error('Error updating order:', error);
-    const message = error instanceof Error ? error.message : 'Failed to update order';
+    const message = error instanceof Error ? error.message : 'Cập nhật đơn hàng thất bại';
     return NextResponse.json(
       { error: message },
       { status: 400 }
@@ -65,14 +69,18 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
     await OrderService.deleteOrder(params.id);
-    return NextResponse.json({ message: 'Order deleted successfully' });
+    return NextResponse.json({ message: 'Xóa đơn hàng thành công' });
   } catch (error) {
     console.error('Error deleting order:', error);
-    const message = error instanceof Error ? error.message : 'Failed to delete order';
+    const message = error instanceof Error ? error.message : 'Xóa đơn hàng thất bại';
+    const status = message.includes('không tồn tại') ? 404 : 400;
     return NextResponse.json(
       { error: message },
-      { status: 400 }
+      { status }
     );
   }
 }

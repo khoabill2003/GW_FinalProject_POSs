@@ -27,10 +27,10 @@ export default function LoginPage() {
       if (result.success) {
         router.push('/');
       } else {
-        setError(result.error || 'Login failed');
+        setError(result.error || 'Đăng nhập thất bại');
       }
     } catch {
-      setError('An error occurred');
+      setError('Đã xảy ra lỗi');
     } finally {
       setIsSubmitting(false);
     }

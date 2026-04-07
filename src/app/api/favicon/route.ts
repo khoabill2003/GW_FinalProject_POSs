@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import prisma from "@/lib/prisma";
+import prisma from "@/lib/db";
 import { readFileSync } from "fs";
 import { join } from "path";
 
@@ -26,6 +26,11 @@ export async function GET() {
 
       if (matches) {
         const mimeType = matches[1];
+        // Only allow safe image mime types to prevent XSS
+        const allowedMimeTypes = ['image/png', 'image/jpeg', 'image/svg+xml', 'image/x-icon', 'image/gif', 'image/webp', 'image/vnd.microsoft.icon'];
+        if (!allowedMimeTypes.includes(mimeType)) {
+          throw new Error('Invalid favicon mime type');
+        }
         const base64Data = matches[2];
         const buffer = Buffer.from(base64Data, "base64");
 
@@ -33,7 +38,7 @@ export async function GET() {
           status: 200,
           headers: {
             "Content-Type": mimeType,
-            "Cache-Control": "public, max-age=300, s-maxage=300",
+            "Cache-Control": "public, max-age=60, s-maxage=60",
           },
         });
       }

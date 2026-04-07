@@ -1,11 +1,17 @@
+"use client";
+
 import Link from 'next/link';
 import AdminGuard from '@/components/admin/AdminGuard';
+import { useAuth } from '@/context/AuthContext';
 
 export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const { user } = useAuth();
+  const isOwner = user?.role === 'owner';
+
   return (
     <AdminGuard>
       <div className="min-h-screen bg-gray-100">
@@ -46,6 +52,12 @@ export default function AdminLayout({
                 className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
               >
                 🪑 Bàn
+              </Link>
+              <Link
+                href="/admin/reservations"
+                className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                📅 Đặt bàn
               </Link>
               
               {/* Thực Đơn với submenu */}
@@ -96,18 +108,34 @@ export default function AdminLayout({
               >
                 👤 Khách Hàng
               </Link>
+              {isOwner && (
+                <Link
+                  href="/admin/users"
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  👥 Nhân viên
+                </Link>
+              )}
               <Link
-                href="/admin/users"
+                href="/admin/zones"
                 className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
               >
-                👥 Nhân viên
+                🏢 Khu vực
               </Link>
               <Link
-                href="/admin/settings"
+                href="/admin/reports"
                 className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
               >
-                ⚙️ Cài đặt
+                📈 Báo cáo
               </Link>
+              {isOwner && (
+                <Link
+                  href="/admin/settings"
+                  className="flex items-center gap-3 px-4 py-3 rounded-lg text-gray-700 hover:bg-gray-100 transition-colors"
+                >
+                  ⚙️ Cài đặt
+                </Link>
+              )}
             </nav>
           </aside>
 

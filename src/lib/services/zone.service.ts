@@ -16,6 +16,7 @@ export interface UpdateZoneInput {
 export async function getZones() {
   return prisma.zone.findMany({
     orderBy: { name: 'asc' },
+    include: { _count: { select: { tables: true } } },
   });
 }
 

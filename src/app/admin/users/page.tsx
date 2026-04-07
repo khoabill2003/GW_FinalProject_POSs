@@ -1,18 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  createdAt: string;
-}
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
+import { User } from '@/types';
 
 type ModalMode = 'create' | 'edit' | null;
 
 export default function UsersPage() {
+  const router = useRouter();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const isOwner = user?.role === 'owner';
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -35,29 +33,36 @@ export default function UsersPage() {
 
   useEffect(() => {
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetch('/api/users');
+
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
+
       const data = await response.json();
       
       if (response.ok) {
         setUsers(data.users);
         setError('');
       } else {
-        setError(data.error || 'Failed to fetch users');
+        setError(data.error || 'Lấy danh sách người dùng thất bại');
       }
     } catch {
-      setError('Network error. Please try again.');
+      setError('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
+    return new Date(dateString).toLocaleDateString('vi-VN', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
@@ -137,14 +142,19 @@ export default function UsersPage() {
           body: JSON.stringify(formData),
         });
 
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+
         const data = await response.json();
 
         if (response.ok) {
-          setSuccessMessage('User created successfully!');
+          setSuccessMessage('Tạo người dùng thành công!');
           fetchUsers();
           closeModal();
         } else {
-          setFormError(data.error || 'Failed to create user');
+          setFormError(data.error || 'Tạo người dùng thất bại');
         }
       } else if (modalMode === 'edit' && selectedUser) {
         const updateData: Record<string, string> = {
@@ -163,18 +173,23 @@ export default function UsersPage() {
           body: JSON.stringify(updateData),
         });
 
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+
         const data = await response.json();
 
         if (response.ok) {
-          setSuccessMessage('User updated successfully!');
+          setSuccessMessage('Cập nhật người dùng thành công!');
           fetchUsers();
           closeModal();
         } else {
-          setFormError(data.error || 'Failed to update user');
+          setFormError(data.error || 'Cập nhật người dùng thất bại');
         }
       }
     } catch {
-      setFormError('Network error. Please try again.');
+      setFormError('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setIsSubmitting(false);
     }
@@ -188,16 +203,21 @@ export default function UsersPage() {
         method: 'DELETE',
       });
 
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
+
       const data = await response.json();
 
       if (response.ok) {
-        setSuccessMessage('User deleted successfully!');
+        setSuccessMessage('Xóa người dùng thành công!');
         fetchUsers();
       } else {
-        setError(data.error || 'Failed to delete user');
+        setError(data.error || 'Xóa người dùng thất bại');
       }
     } catch {
-      setError('Network error. Please try again.');
+      setError('Lỗi mạng. Vui lòng thử lại.');
     } finally {
       setDeleteConfirmUser(null);
     }
@@ -210,10 +230,26 @@ export default function UsersPage() {
     }
   }, [successMessage]);
 
+  if (authLoading) {
+    return (
+      <div className="bg-white rounded-xl shadow-sm p-8 text-center">
+        <p className="text-gray-500">Đang tải...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated || !isOwner) {
+    return (
+      <div className="p-6 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800">
+        ⚠️ Chỉ chủ sở hữu mới có thể quản lý người dùng.
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Users</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Người dùng</h1>
         <div className="flex gap-2">
           <button
             onClick={fetchUsers}
@@ -225,7 +261,7 @@ export default function UsersPage() {
             onClick={openCreateModal}
             className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors"
           >
-            + Add User
+            + Thêm người dùng
           </button>
         </div>
       </div>
@@ -244,17 +280,17 @@ export default function UsersPage() {
 
       {isLoading ? (
         <div className="bg-white rounded-xl shadow-sm p-8 text-center">
-          <p className="text-gray-500">Loading users...</p>
+          <p className="text-gray-500">Đang tải...</p>
         </div>
       ) : users.length === 0 ? (
         <div className="bg-white rounded-xl shadow-sm p-8 text-center">
           <div className="text-5xl mb-4">👥</div>
-          <p className="text-gray-500">No users registered yet</p>
+          <p className="text-gray-500">Chưa có người dùng nào</p>
           <button
             onClick={openCreateModal}
             className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
           >
-            Create First User
+            Tạo người dùng đầu tiên
           </button>
         </div>
       ) : (
@@ -269,13 +305,13 @@ export default function UsersPage() {
                   Email
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Role
+                  Vai trò
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Registered
+                  Ngày tạo
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Actions
+                  Thao tác
                 </th>
               </tr>
             </thead>
@@ -307,14 +343,14 @@ export default function UsersPage() {
                         onClick={() => openEditModal(user)}
                         className="px-3 py-1 text-sm text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                       >
-                        Edit
+                        Sửa
                       </button>
                       {user.role !== 'owner' && (
                         <button
                           onClick={() => setDeleteConfirmUser(user)}
                           className="px-3 py-1 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                         >
-                          Delete
+                          Xóa
                         </button>
                       )}
                     </div>
@@ -329,17 +365,17 @@ export default function UsersPage() {
       {/* Summary */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl shadow-sm p-4">
-          <p className="text-sm text-gray-500">Total Users</p>
+          <p className="text-sm text-gray-500">Tổng người dùng</p>
           <p className="text-2xl font-bold text-gray-900">{users.length}</p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4">
-          <p className="text-sm text-gray-500">Managers</p>
+          <p className="text-sm text-gray-500">Quản lý</p>
           <p className="text-2xl font-bold text-blue-600">
             {users.filter(u => u.role === 'manager').length}
           </p>
         </div>
         <div className="bg-white rounded-xl shadow-sm p-4">
-          <p className="text-sm text-gray-500">Cashiers</p>
+          <p className="text-sm text-gray-500">Thu ngân</p>
           <p className="text-2xl font-bold text-green-600">
             {users.filter(u => u.role === 'cashier').length}
           </p>
@@ -351,7 +387,7 @@ export default function UsersPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
             <h2 className="text-xl font-bold text-gray-900 mb-4">
-              {modalMode === 'create' ? 'Create New User' : 'Edit User'}
+              {modalMode === 'create' ? 'Tạo người dùng mới' : 'Sửa người dùng'}
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -363,7 +399,7 @@ export default function UsersPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Name
+                  Tên
                 </label>
                 <input
                   type="text"
@@ -389,7 +425,7 @@ export default function UsersPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Password {modalMode === 'edit' && <span className="text-gray-400">(leave blank to keep current)</span>}
+                  Mật khẩu {modalMode === 'edit' && <span className="text-gray-400">(để trống nếu không đổi)</span>}
                 </label>
                 <input
                   type="password"
@@ -403,7 +439,7 @@ export default function UsersPage() {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Role
+                  Vai trò
                 </label>
                 <select
                   value={formData.role}
@@ -428,14 +464,14 @@ export default function UsersPage() {
                   onClick={closeModal}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  Cancel
+                  Hủy
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
                   className="flex-1 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50"
                 >
-                  {isSubmitting ? 'Saving...' : modalMode === 'create' ? 'Create User' : 'Save Changes'}
+                  {isSubmitting ? 'Đang lưu...' : modalMode === 'create' ? 'Tạo' : 'Lưu thay đổi'}
                 </button>
               </div>
             </form>
@@ -447,9 +483,9 @@ export default function UsersPage() {
       {deleteConfirmUser && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Delete User</h2>
+            <h2 className="text-xl font-bold text-gray-900 mb-2">Xóa người dùng</h2>
             <p className="text-gray-600 mb-6">
-              Are you sure you want to delete <strong>{deleteConfirmUser.name}</strong>? This action cannot be undone.
+              Bạn có chắc chắn muốn xóa <strong>{deleteConfirmUser.name}</strong>? Thao tác này không thể hoàn tác.
             </p>
 
             <div className="flex gap-3">
@@ -457,13 +493,13 @@ export default function UsersPage() {
                 onClick={() => setDeleteConfirmUser(null)}
                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
-                Cancel
+                Hủy
               </button>
               <button
                 onClick={handleDelete}
                 className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
               >
-                Delete User
+                Xóa
               </button>
             </div>
           </div>

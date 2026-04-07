@@ -22,6 +22,7 @@ export interface UpdateIngredientInput {
 export async function getIngredients() {
   return prisma.ingredient.findMany({
     orderBy: { name: 'asc' },
+    include: { _count: { select: { menuItems: true } } },
   });
 }
 
@@ -144,12 +145,10 @@ export async function updateStock(id: string, quantity: number, type: 'add' | 's
 
 // Lấy nguyên liệu sắp hết hàng
 export async function getLowStockIngredients() {
-  return prisma.ingredient.findMany({
-    where: {
-      stock: {
-        lte: prisma.ingredient.fields.minStock,
-      },
-    },
+  // Prisma doesn't support comparing columns directly,
+  // so we fetch all and filter in memory
+  const ingredients = await prisma.ingredient.findMany({
     orderBy: { stock: 'asc' },
   });
+  return ingredients.filter((i) => i.stock <= i.minStock);
 }

@@ -50,6 +50,11 @@ export async function GET(request: NextRequest) {
 
     // 2. Tìm order theo txnRef (format: orderNumber + 6 digits timestamp)
     // VD: 12345678123456 => orderNumber là 12345678 (bỏ 6 số cuối)
+    if (!txnRef || txnRef.length <= 6) {
+      console.error('IPN: Invalid txnRef length:', txnRef);
+      return NextResponse.json({ RspCode: '01', Message: 'Order not found' });
+    }
+
     const orderNumber = parseInt(txnRef.slice(0, -6));
     if (!orderNumber || isNaN(orderNumber)) {
       console.error('IPN: Invalid txnRef format:', txnRef);

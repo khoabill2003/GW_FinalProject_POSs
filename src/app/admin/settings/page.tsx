@@ -14,7 +14,7 @@ interface Branch {
 
 export default function SettingsPage() {
   const { user, isAuthenticated, logout } = useAuth();
-  const [isOwner] = useState(user?.role === "owner");
+  const isOwner = user?.role === "owner";
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
@@ -75,8 +75,8 @@ export default function SettingsPage() {
           });
           setImagePreview(data.mainBranch?.image || "");
           setBranches(data.branches || []);
-          setDisplayedTaxRate(data.taxRate || 8);
-          setFormTaxRate(data.taxRate || 8);
+          setDisplayedTaxRate(data.taxRate ?? 8);
+          setFormTaxRate(data.taxRate ?? 8);
           // Load favicon
           if (data.favicon) {
             setCurrentFavicon(data.favicon);
@@ -171,8 +171,13 @@ export default function SettingsPage() {
       if (response.ok) {
         setCurrentFavicon(faviconData || currentFavicon);
         setFaviconData("");
+        // Force browser to reload favicon
+        const link = document.querySelector("link[rel='icon']") as HTMLLinkElement;
+        if (link) {
+          link.href = `/api/favicon?v=${Date.now()}`;
+        }
         setSuccessMessage(
-          "✅ Cập nhật favicon thành công! Tải lại trang để thấy thay đổi.",
+          "✅ Cập nhật favicon thành công!",
         );
         setTimeout(() => setSuccessMessage(""), 5000);
       } else {
@@ -208,7 +213,12 @@ export default function SettingsPage() {
         setCurrentFavicon("");
         setFaviconPreview("");
         setFaviconData("");
-        setSuccessMessage("✅ Đã xóa favicon. Tải lại trang để thấy thay đổi.");
+        // Force browser to reload favicon
+        const link = document.querySelector("link[rel='icon']") as HTMLLinkElement;
+        if (link) {
+          link.href = `/api/favicon?v=${Date.now()}`;
+        }
+        setSuccessMessage("✅ Đã xóa favicon.");
         setTimeout(() => setSuccessMessage(""), 5000);
       } else {
         setError("Không thể xóa favicon");

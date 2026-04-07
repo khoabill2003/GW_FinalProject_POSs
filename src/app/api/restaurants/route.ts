@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import prisma from '@/lib/prisma';
+import prisma from '@/lib/db';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,6 +22,11 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
+    const authUser = authenticateRequest(req);
+    if (authUser instanceof NextResponse) return authUser;
+    const roleCheck = authorizeRoles(authUser, ['owner']);
+    if (roleCheck) return roleCheck;
+
     const data = await req.json();
     const restaurant = await prisma.restaurant.upsert({
       where: { id: 'default' },

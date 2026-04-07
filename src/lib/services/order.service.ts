@@ -32,17 +32,7 @@ import prisma from '@/lib/db';
  * Ví dụ: order-m2abc123xyz
  */
 function generateId() {
-  return 'order-' + Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
-interface OrderItem {
-  costPrice?: number;
-}
-
-interface Order {
-  createdAt: Date;
-  total: number;
-  items: OrderItem[];
+  return 'order-' + Date.now().toString(36) + Math.random().toString(36).substring(2);
 }
 
 export interface CreateOrderInput {
@@ -241,7 +231,10 @@ export async function createOrder(input: CreateOrderInput) {
     });
   }
 
-  const tax = subtotal * 0.08; // 8% tax
+  // Get tax rate from restaurant settings
+  const restaurant = await prisma.restaurant.findUnique({ where: { id: 'default' } });
+  const taxRate = (restaurant?.taxRate ?? 8.0) / 100;
+  const tax = subtotal * taxRate;
   const total = subtotal + tax;
 
   // Create order
@@ -260,7 +253,7 @@ export async function createOrder(input: CreateOrderInput) {
       notes: notes || null,
       items: {
         create: orderItems.map(item => ({
-          id: 'item-' + Date.now().toString(36) + Math.random().toString(36).substr(2),
+          id: 'item-' + Date.now().toString(36) + Math.random().toString(36).substring(2),
           ...item,
         })),
       },
@@ -436,12 +429,12 @@ export async function confirmOrderItems(orderId: string, itemIds?: string[]) {
   });
 }
 
-// Lấy order active của bàn (pending, confirmed, preparing, ready)
+// Lấy order active của bàn (pending, confirmed, preparing, ready, served)
 export async function getActiveOrderByTableId(tableId: string) {
   return prisma.order.findFirst({
     where: {
       tableId,
-      status: { in: ['pending', 'confirmed', 'preparing', 'ready'] },
+      status: { in: ['pending', 'confirmed', 'preparing', 'ready', 'served'] },
       paymentStatus: 'unpaid',
     },
     orderBy: { createdAt: 'desc' },
@@ -537,7 +530,7 @@ export async function addItemsToOrder(orderId: string, items: { menuItemId: stri
     const totalCost = costPerItem * item.quantity;
 
     newOrderItems.push({
-      id: 'item-' + Date.now().toString(36) + Math.random().toString(36).substr(2),
+      id: 'item-' + Date.now().toString(36) + Math.random().toString(36).substring(2),
       menuItemId: menuItem.id,
       menuItemName: menuItem.name,
       quantity: item.quantity,
@@ -550,9 +543,16 @@ export async function addItemsToOrder(orderId: string, items: { menuItemId: stri
     });
   }
 
-  // Recalculate totals
+  // Preserve the order's original tax rate so old orders keep their rate
+  let originalTaxRate: number;
+  if (existingOrder.subtotal > 0) {
+    originalTaxRate = existingOrder.tax / existingOrder.subtotal;
+  } else {
+    const restaurant = await prisma.restaurant.findUnique({ where: { id: 'default' } });
+    originalTaxRate = (restaurant?.taxRate ?? 8.0) / 100;
+  }
   const newSubtotal = existingOrder.subtotal + addedSubtotal;
-  const newTax = newSubtotal * 0.08;
+  const newTax = newSubtotal * originalTaxRate;
   const newTotal = newSubtotal + newTax;
 
   // Add items and update totals
@@ -613,10 +613,10 @@ export async function getOrderStats() {
   });
 
   const calculateStats = (startDate: Date) => {
-    const filteredOrders = orders.filter((o: Order) => new Date(o.createdAt) >= startDate);
-    const sales = filteredOrders.reduce((sum: number, o: Order) => sum + o.total, 0);
-    const cost = filteredOrders.reduce((sum: number, o: Order) => 
-      sum + o.items.reduce((itemSum: number, item: OrderItem) => itemSum + (item.costPrice || 0), 0), 0
+    const filteredOrders = orders.filter((o) => new Date(o.createdAt) >= startDate);
+    const sales = filteredOrders.reduce((sum, o) => sum + o.total, 0);
+    const cost = filteredOrders.reduce((sum, o) => 
+      sum + o.items.reduce((itemSum, item) => itemSum + (item.costPrice || 0), 0), 0
     );
     return { sales, cost, profit: sales - cost, count: filteredOrders.length };
   };

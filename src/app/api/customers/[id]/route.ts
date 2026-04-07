@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CustomerService } from '@/lib/services';
+import { authenticateRequest } from '@/lib/middleware/auth';
 
 // GET single customer
 export async function GET(
@@ -7,11 +8,14 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
     const customer = await CustomerService.getCustomerById(params.id);
 
     if (!customer) {
       return NextResponse.json(
-        { error: 'Customer not found' },
+        { error: 'Khách hàng không tồn tại' },
         { status: 404 }
       );
     }
@@ -20,7 +24,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching customer:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch customer' },
+      { error: 'Lấy thông tin khách hàng thất bại' },
       { status: 500 }
     );
   }
@@ -32,6 +36,9 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
     const { name, phone, email, address, notes } = await request.json();
 
     const customer = await CustomerService.updateCustomer(params.id, {
@@ -45,7 +52,7 @@ export async function PUT(
     return NextResponse.json({ customer });
   } catch (error) {
     console.error('Error updating customer:', error);
-    const message = error instanceof Error ? error.message : 'Failed to update customer';
+    const message = error instanceof Error ? error.message : 'Cập nhật khách hàng thất bại';
     const status = message.includes('không tồn tại') ? 404 :
                    message.includes('đã tồn tại') ? 409 : 500;
     return NextResponse.json(
@@ -61,11 +68,14 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
     await CustomerService.deleteCustomer(params.id);
-    return NextResponse.json({ message: 'Customer deleted successfully' });
+    return NextResponse.json({ message: 'Xóa khách hàng thành công' });
   } catch (error) {
     console.error('Error deleting customer:', error);
-    const message = error instanceof Error ? error.message : 'Failed to delete customer';
+    const message = error instanceof Error ? error.message : 'Xóa khách hàng thất bại';
     const status = message.includes('không tồn tại') ? 404 : 500;
     return NextResponse.json(
       { error: message },

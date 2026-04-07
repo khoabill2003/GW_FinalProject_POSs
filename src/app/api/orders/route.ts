@@ -21,6 +21,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import * as OrderService from '@/lib/services/order.service';
+import { authenticateRequest } from '@/lib/middleware/auth';
 
 // Force dynamic rendering (không cache static)
 export const dynamic = 'force-dynamic';
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching orders:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch orders' },
+      { error: 'Lấy danh sách đơn hàng thất bại' },
       { status: 500 }
     );
   }
@@ -96,6 +97,9 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
     const body = await request.json();
     const order = await OrderService.createOrder(body);
     return NextResponse.json({ order }, { status: 201 }); // 201 = Created

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ZoneService } from '@/lib/services';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
-// GET single zone
+// GET single zone (public)
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
@@ -20,7 +21,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching zone:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch zone' },
+      { error: 'Lấy thông tin khu vực thất bại' },
       { status: 500 }
     );
   }
@@ -32,6 +33,12 @@ export async function PUT(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager']);
+    if (roleCheck) return roleCheck;
+
     const { name, description } = await request.json();
 
     const zone = await ZoneService.updateZone(params.id, {
@@ -42,7 +49,7 @@ export async function PUT(
     return NextResponse.json(zone);
   } catch (error) {
     console.error('Error updating zone:', error);
-    const message = error instanceof Error ? error.message : 'Failed to update zone';
+    const message = error instanceof Error ? error.message : 'Cập nhật khu vực thất bại';
     const status = message.includes('không tồn tại') ? 404 :
                    message.includes('đã tồn tại') ? 400 : 500;
     return NextResponse.json(
@@ -58,11 +65,17 @@ export async function DELETE(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager']);
+    if (roleCheck) return roleCheck;
+
     await ZoneService.deleteZone(params.id);
     return NextResponse.json({ message: 'Đã xóa khu vực' });
   } catch (error) {
     console.error('Error deleting zone:', error);
-    const message = error instanceof Error ? error.message : 'Failed to delete zone';
+    const message = error instanceof Error ? error.message : 'Xóa khu vực thất bại';
     const status = message.includes('không tồn tại') ? 404 :
                    message.includes('đang có') ? 400 : 500;
     return NextResponse.json(

@@ -1,27 +1,42 @@
-// TypeScript type definitions for the Restaurant POS system
+﻿// TypeScript type definitions for the Restaurant POS system
 
 export interface MenuItem {
   id: string;
   name: string;
-  description: string;
+  description: string | null;
   price: number;
-  category: {
-    id: string;
-    name: string;
-  };
+  category: Category;
   categoryId?: string;
-  image?: string;
+  image?: string | null;
   available: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+  type?: string;
+  menuType?: string;
+  ingredients?: MenuItemIngredient[];
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Category {
   id: string;
   name: string;
   description?: string;
-  icon?: string;
-  order: number;
+  icon?: string | null;
+  order?: number;
+}
+
+export interface Ingredient {
+  id: string;
+  name: string;
+  unit: string;
+  costPrice: number;
+  stock?: number;
+  minStock?: number;
+}
+
+export interface MenuItemIngredient {
+  ingredientId: string;
+  quantity: number;
+  ingredient: Ingredient;
 }
 
 export interface Zone {
@@ -35,17 +50,54 @@ export interface Table {
   number: number;
   name?: string;
   capacity: number;
-  status: 'available' | 'occupied' | 'reserved';
+  status: 'available' | 'occupied' | 'reserved' | string;
   zoneId?: string;
-  zone?: Zone;
-  createdAt: Date;
-  updatedAt: Date;
+  zone?: Zone | string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface CartItem {
   menuItem: MenuItem;
   quantity: number;
   notes?: string;
+}
+
+export type OrderStatus = 
+  | 'pending' 
+  | 'confirmed' 
+  | 'preparing' 
+  | 'ready' 
+  | 'served'
+  | 'completed' 
+  | 'cancelled';
+
+export type PaymentStatus = 'paid' | 'unpaid' | 'refunded';
+
+export type PaymentMethod = 
+  | 'cash' 
+  | 'card' 
+  | 'mobile'
+  | 'vnpay';
+
+export type ItemStatus = 'confirmed' | 'pending_confirm';
+
+export interface OrderItem {
+  id: string;
+  menuItemId?: string;
+  menuItemName?: string;
+  quantity: number;
+  price?: number;
+  unitPrice: number;
+  totalPrice: number;
+  notes?: string;
+  status?: ItemStatus | string;
+  menuItem: {
+    id: string;
+    name: string;
+    price: number;
+    image?: string;
+  };
 }
 
 export interface Order {
@@ -55,16 +107,22 @@ export interface Order {
   subtotal: number;
   tax: number;
   total: number;
+  discount?: number;
   status: OrderStatus;
   paymentMethod?: PaymentMethod;
-  paymentStatus?: 'paid' | 'unpaid';
-  table?: Table;
+  paymentStatus?: PaymentStatus;
+  table?: {
+    id: string;
+    number: number;
+    name?: string;
+    zone?: Zone | string;
+  };
   tableId?: string;
   customer?: Customer;
   customerId?: string;
   notes?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: string;
+  updatedAt?: string;
 }
 
 export interface Customer {
@@ -74,49 +132,21 @@ export interface Customer {
   email?: string;
   address?: string;
   notes?: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: string;
+  updatedAt?: string;
 }
-
-export interface OrderItem {
-  id: string;
-  menuItemId: string;
-  menuItemName: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-  notes?: string;
-}
-
-export type OrderStatus = 
-  | 'pending' 
-  | 'confirmed' 
-  | 'preparing' 
-  | 'ready' 
-  | 'completed' 
-  | 'cancelled';
-
-export type PaymentMethod = 
-  | 'cash' 
-  | 'card' 
-  | 'mobile';
 
 export interface User {
   id: string;
   email: string;
   name: string;
   role: UserRole;
-  createdAt: Date;
+  createdAt: string;
 }
 
 export type UserRole = 'owner' | 'manager' | 'waiter' | 'kitchen' | 'cashier';
 
 // Role priority (higher number = more access)
-// owner: Chủ nhà hàng - toàn quyền
-// manager: Quản lý - quản lý + admin panel
-// waiter: Phục vụ - tạo đơn, xác nhận, phục vụ
-// kitchen: Bếp - chuẩn bị món
-// cashier: Thu ngân - CHỈ thanh toán
 export const ROLE_PRIORITY: Record<UserRole, number> = {
   owner: 100,
   manager: 50,
@@ -124,6 +154,13 @@ export const ROLE_PRIORITY: Record<UserRole, number> = {
   kitchen: 30,
   cashier: 25,
 };
+
+export type MenuType = 'single' | 'buffet' | 'set_menu';
+
+export interface SelectedIngredient {
+  ingredientId: string;
+  quantity: number;
+}
 
 export interface SalesReport {
   date: Date;

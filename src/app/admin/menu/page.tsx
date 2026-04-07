@@ -3,47 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { formatCurrency } from '@/lib/utils';
-
-interface Category {
-  id: string;
-  name: string;
-  icon: string | null;
-}
-
-interface Ingredient {
-  id: string;
-  name: string;
-  unit: string;
-  costPrice: number;
-}
-
-interface MenuItemIngredient {
-  ingredientId: string;
-  quantity: number;
-  ingredient: Ingredient;
-}
-
-interface MenuItem {
-  id: string;
-  name: string;
-  description: string | null;
-  price: number;
-  image: string | null;
-  available: boolean;
-  type: string;
-  categoryId: string;
-  category: Category;
-  ingredients?: MenuItemIngredient[];
-  createdAt: string;
-}
+import { Category, Ingredient, MenuItemIngredient, MenuItem, MenuType, SelectedIngredient } from '@/types';
 
 type ModalMode = 'create' | 'edit' | null;
-type MenuType = 'single' | 'buffet' | 'set_menu';
-
-interface SelectedIngredient {
-  ingredientId: string;
-  quantity: number;
-}
 
 export default function MenuManagement() {
   const searchParams = useSearchParams();
@@ -194,7 +156,7 @@ export default function MenuManagement() {
       name: item.name,
       description: item.description || '',
       price: item.price.toString(),
-      categoryId: item.categoryId,
+      categoryId: item.categoryId || item.category?.id || '',
       type: item.type as MenuType,
       available: item.available,
       image: item.image || '',
@@ -210,7 +172,7 @@ export default function MenuManagement() {
     } else {
       setSelectedIngredients([]);
     }
-    setImagePreview(item.image);
+    setImagePreview(item.image || null);
     setFormError('');
     setModalMode('edit');
   };

@@ -22,6 +22,7 @@ export interface UpdateCustomerInput {
 export async function getCustomers() {
   return prisma.customer.findMany({
     orderBy: { createdAt: 'desc' },
+    include: { _count: { select: { orders: true } } },
   });
 }
 

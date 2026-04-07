@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { formatCurrency } from '@/lib/utils';
 
 interface Ingredient {
@@ -22,6 +23,7 @@ type ModalMode = 'create' | 'edit' | null;
 const UNITS = ['kg', 'g', 'lít', 'ml', 'cái', 'gói', 'hộp', 'chai', 'lon', 'quả', 'bó', 'miếng'];
 
 export default function IngredientsPage() {
+  const router = useRouter();
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -49,6 +51,12 @@ export default function IngredientsPage() {
     try {
       setIsLoading(true);
       const response = await fetch('/api/ingredients');
+
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
+
       if (response.ok) {
         const data = await response.json();
         setIngredients(data.ingredients || []);
@@ -61,7 +69,7 @@ export default function IngredientsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     fetchIngredients();
@@ -124,6 +132,11 @@ export default function IngredientsPage() {
           body: JSON.stringify(formData),
         });
 
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+
         const data = await response.json();
 
         if (response.ok) {
@@ -139,6 +152,11 @@ export default function IngredientsPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
+
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
 
         const data = await response.json();
 
@@ -164,6 +182,11 @@ export default function IngredientsPage() {
       const response = await fetch(`/api/ingredients/${deleteConfirm.id}`, {
         method: 'DELETE',
       });
+
+      if (response.status === 401) {
+        router.push('/login');
+        return;
+      }
 
       const data = await response.json();
 
