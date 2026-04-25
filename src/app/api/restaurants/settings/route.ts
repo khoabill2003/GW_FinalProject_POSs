@@ -14,8 +14,8 @@ export async function GET() {
     const branchesData = await prisma.branch.findMany();
 
     return NextResponse.json({
-      restaurantName: restaurant?.name || "Nhà Hàng",
-      taxRate: restaurant?.taxRate ?? 8.0,
+      restaurantName: restaurant?.name || "",
+      taxRate: restaurant?.taxRate ?? 0,
       favicon: restaurant?.favicon || "",
       mainBranch: {
         address: restaurant?.address || "",

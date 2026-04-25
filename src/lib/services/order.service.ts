@@ -231,9 +231,9 @@ export async function createOrder(input: CreateOrderInput) {
     });
   }
 
-  // Get tax rate from restaurant settings
+  // Get tax rate from restaurant settings (DB is source of truth)
   const restaurant = await prisma.restaurant.findUnique({ where: { id: 'default' } });
-  const taxRate = (restaurant?.taxRate ?? 8.0) / 100;
+  const taxRate = (restaurant?.taxRate ?? 0) / 100;
   const tax = subtotal * taxRate;
   const total = subtotal + tax;
 

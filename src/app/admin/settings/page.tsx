@@ -44,9 +44,10 @@ export default function SettingsPage() {
     image: "",
   });
 
-  // Tax settings
-  const [displayedTaxRate, setDisplayedTaxRate] = useState(8);
-  const [formTaxRate, setFormTaxRate] = useState(8);
+  // Tax settings — no hardcoded default, always loaded from DB
+  const [displayedTaxRate, setDisplayedTaxRate] = useState(0);
+  const [formTaxRate, setFormTaxRate] = useState(0);
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
 
   // Favicon settings
   const [currentFavicon, setCurrentFavicon] = useState("");
@@ -75,8 +76,9 @@ export default function SettingsPage() {
           });
           setImagePreview(data.mainBranch?.image || "");
           setBranches(data.branches || []);
-          setDisplayedTaxRate(data.taxRate ?? 8);
-          setFormTaxRate(data.taxRate ?? 8);
+          setDisplayedTaxRate(data.taxRate ?? 0);
+          setFormTaxRate(data.taxRate ?? 0);
+          setSettingsLoaded(true);
           // Load favicon
           if (data.favicon) {
             setCurrentFavicon(data.favicon);
@@ -521,39 +523,46 @@ export default function SettingsPage() {
         <h2 className="text-lg font-bold text-gray-900 mb-4">
           💰 Cài đặt thuế
         </h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Tỷ lệ thuế (%)
-            </label>
-            <input
-              type="number"
-              value={formTaxRate}
-              onChange={(e) =>
-                setFormTaxRate(
-                  Math.max(0, Math.min(100, Number(e.target.value))),
-                )
-              }
-              min="0"
-              max="100"
-              step="0.1"
-              className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-            />
-            <p className="text-sm text-gray-500 mt-2">
-              Thuế hiện tại được lưu: {displayedTaxRate}%
-            </p>
-            {formTaxRate !== displayedTaxRate && (
-              <p className="text-sm text-orange-600 mt-1">Chưa lưu thay đổi</p>
-            )}
+        {!settingsLoaded ? (
+          <div className="flex items-center gap-2 text-gray-500 py-4">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-primary-600"></div>
+            <span>Đang tải từ cơ sở dữ liệu...</span>
           </div>
-          <button
-            onClick={handleSaveTaxRate}
-            disabled={isLoading || formTaxRate === displayedTaxRate}
-            className="w-full py-2 px-4 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            {isLoading ? "⏳ Đang lưu..." : "✅ Lưu tỷ lệ thuế"}
-          </button>
-        </div>
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Tỷ lệ thuế (%)
+              </label>
+              <input
+                type="number"
+                value={formTaxRate}
+                onChange={(e) =>
+                  setFormTaxRate(
+                    Math.max(0, Math.min(100, Number(e.target.value))),
+                  )
+                }
+                min="0"
+                max="100"
+                step="0.1"
+                className="w-32 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+              <p className="text-sm text-gray-500 mt-2">
+                Thuế đang lưu trong DB: <strong>{displayedTaxRate}%</strong>
+              </p>
+              {formTaxRate !== displayedTaxRate && (
+                <p className="text-sm text-orange-600 mt-1">⚠️ Chưa lưu thay đổi</p>
+              )}
+            </div>
+            <button
+              onClick={handleSaveTaxRate}
+              disabled={isLoading || formTaxRate === displayedTaxRate}
+              className="w-full py-2 px-4 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+            >
+              {isLoading ? "⏳ Đang lưu..." : "✅ Lưu tỷ lệ thuế"}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Restaurant Info Display with RestaurantInfo Component */}
