@@ -96,8 +96,10 @@ export async function PUT(
       // Calculate totals from pre-ordered items
       let subtotal = 0;
       const orderItems = [];
+      let itemCounter = 0;
 
       for (const item of reservation.items) {
+        itemCounter += 1;
         const itemTotal = item.menuItem.price * item.quantity;
         subtotal += itemTotal;
 
@@ -106,8 +108,9 @@ export async function PUT(
           costPerItem += mi.quantity * mi.ingredient.costPrice;
         }
 
+        // Use counter suffix to guarantee unique IDs even within the same millisecond
         orderItems.push({
-          id: 'item-' + Date.now().toString(36) + Math.random().toString(36).substring(2),
+          id: `item-${Date.now().toString(36)}-${itemCounter}-${Math.random().toString(36).substring(2)}`,
           menuItemId: item.menuItem.id,
           menuItemName: item.menuItem.name,
           quantity: item.quantity,
@@ -119,40 +122,58 @@ export async function PUT(
         });
       }
 
-      // Get tax rate
+      // Get tax rate from DB (source of truth — no hardcode fallback)
       const restaurant = await prisma.restaurant.findUnique({ where: { id: 'default' } });
-      const taxRate = (restaurant?.taxRate ?? 8.0) / 100;
+      const taxRate = (restaurant?.taxRate ?? 0) / 100;
       const tax = subtotal * taxRate;
       const total = subtotal + tax;
 
-      // Create the order if there are pre-ordered items
-      if (orderItems.length > 0) {
-        await prisma.order.create({
-          data: {
-            id: 'order-' + Date.now().toString(36) + Math.random().toString(36).substring(2),
-            orderNumber,
-            subtotal,
-            tax,
-            total,
-            status: 'confirmed',
-            paymentStatus: 'unpaid',
-            tableId: reservation.tableId,
-            customerId: customer.id,
-            notes: `Đặt bàn trước - ${reservation.customerName} (${reservation.customerPhone})`,
-            items: { create: orderItems },
-          },
+      // Create the order — always create so POS can manage the table
+      // If no pre-ordered items, create an empty order as a placeholder
+      await prisma.order.create({
+        data: {
+          id: 'order-' + Date.now().toString(36) + Math.random().toString(36).substring(2),
+          orderNumber,
+          subtotal,
+          tax,
+          total,
+          status: 'confirmed',
+          paymentStatus: 'unpaid',
+          tableId: reservation.tableId,
+          customerId: customer.id,
+          notes: `Đặt bàn trước - ${reservation.customerName} (${reservation.customerPhone})`,
+          items: orderItems.length > 0 ? { create: orderItems } : undefined,
+        },
+      });
+
+      // Update table status to occupied (safe-guard: only if tableId exists)
+      if (reservation.tableId) {
+        await prisma.table.update({
+          where: { id: reservation.tableId },
+          data: { status: 'occupied' },
         });
       }
+    }
 
-      // Update table status to occupied
-      await prisma.table.update({
-        where: { id: reservation.tableId },
-        data: { status: 'occupied' },
+    // If completing → free the table only when there is no active unpaid order
+    if (status === 'completed' && reservation.tableId) {
+      const activeOrder = await prisma.order.findFirst({
+        where: {
+          tableId: reservation.tableId,
+          paymentStatus: 'unpaid',
+          status: { not: 'cancelled' },
+        },
       });
+      if (!activeOrder) {
+        await prisma.table.update({
+          where: { id: reservation.tableId },
+          data: { status: 'available' },
+        });
+      }
     }
 
     // If cancelling → free the table if it was reserved for this booking
-    if (status === 'cancelled') {
+    if (status === 'cancelled' && reservation.tableId) {
       const currentTable = await prisma.table.findUnique({ where: { id: reservation.tableId } });
       if (currentTable?.status === 'reserved') {
         await prisma.table.update({
