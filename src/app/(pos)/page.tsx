@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { formatCurrency, formatOrderNumber } from '@/lib/utils';
 import ReceiptModal from '@/components/pos/ReceiptModal';
+import PaymentModal from '@/components/pos/PaymentModal';
 import RestaurantInfo from '@/components/ui/RestaurantInfo';
 import { Category, MenuItem, Table, Customer, Order } from '@/types';
 
@@ -46,7 +47,9 @@ export default function POSPage() {
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState(false);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedTableForQR, setSelectedTableForQR] = useState<Table | null>(null);
+  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Order | null>(null);
   const [paidOrder, setPaidOrder] = useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchCustomer, setSearchCustomer] = useState('');
@@ -279,69 +282,12 @@ export default function POSPage() {
     router.push('/login');
   };
 
-  // Handle payment for cashier
-  const handlePayment = async (orderId: string, paymentMethod: string) => {
-    try {
-      const order = orders.find(o => o.id === orderId);
-      if (!order) return;
-
-      if (paymentMethod === 'vnpay') {
-        // VNPay redirect payment
-        const response = await fetch('/api/payments/vnpay', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId,
-            orderNumber: order.orderNumber,
-            amount: order.total,
-            customerName: order.customer?.name,
-            customerPhone: order.customer?.phone,
-          }),
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          // Store order ID in sessionStorage to process after return
-          sessionStorage.setItem('vnpay_order_id', orderId);
-          sessionStorage.setItem('vnpay_payment_method', paymentMethod);
-          // Redirect to VNPay
-          window.location.href = data.paymentUrl;
-        } else {
-          const error = await response.json();
-          alert(`❌ Lỗi: ${error.error || 'Không thể tạo yêu cầu thanh toán'}`);
-        }
-        return;
-      }
-
-      // Cash payment - direct process
-      const payResponse = await fetch(`/api/orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          paymentStatus: 'paid',
-          paymentMethod: paymentMethod,
-          status: 'completed'
-        }),
-      });
-
-      if (payResponse.ok) {
-        const result = await payResponse.json();
-        const paidOrderData = result.order;
-        
-        // Store paid order and show receipt modal
-        setPaidOrder(paidOrderData);
-        setShowReceiptModal(true);
-        setShowCheckoutModal(false);
-
-        // Refresh orders
-        fetchData();
-      } else {
-        const error = await payResponse.json();
-        alert(`❌ Lỗi: ${error.error}`);
-      }
-    } catch (error) {
-      console.error('Failed to process payment:', error);
-      alert('❌ Không thể xử lý thanh toán');
+  // Handle payment for cashier - Open PaymentModal instead of alert
+  const handlePayment = async (orderId: string) => {
+    const order = orders.find(o => o.id === orderId);
+    if (order) {
+      setSelectedOrderForPayment(order);
+      setShowPaymentModal(true);
     }
   };
 
@@ -390,8 +336,8 @@ export default function POSPage() {
 
   // Filter orders based on role
   const cashierOrders = orders.filter(order => 
-    order.paymentStatus === 'unpaid' && 
-    order.status === 'served'
+    order.status === 'served' && 
+    order.paymentStatus === 'unpaid'
   );
   const waiterOrders = orders.filter(order => ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(order.status) && order.status !== 'completed' && order.status !== 'cancelled');
   const kitchenOrders = orders.filter(order => ['pending', 'confirmed', 'preparing'].includes(order.status));
@@ -904,20 +850,12 @@ export default function POSPage() {
                         {isCashier ? (
                           /* Payment Methods for Cashier */
                           <>
-                            <div className="grid grid-cols-2 gap-2">
-                              <button
-                                onClick={() => handlePayment(order.id, 'cash')}
-                                className="bg-green-500 text-white py-2 px-3 rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
-                              >
-                                💵 Tiền mặt
-                              </button>
-                              <button
-                                onClick={() => handlePayment(order.id, 'vnpay')}
-                                className="bg-blue-600 text-white py-2 px-3 rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
-                              >
-                                💳 VNPay
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => handlePayment(order.id)}
+                              className="w-full bg-green-500 text-white py-2 px-3 rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
+                            >
+                              💳 Thanh toán
+                            </button>
                           </>
                         ) : (
                           /* Kitchen - Confirm pending items, start cooking, mark ready */
@@ -1561,6 +1499,26 @@ export default function POSPage() {
               address: 'Địa chỉ nhà hàng',
               phone: '0123456789',
             }}
+          />
+        )}
+
+        {/* Payment Modal */}
+        {selectedOrderForPayment && (
+          <PaymentModal
+            isOpen={showPaymentModal}
+            onClose={() => {
+              setShowPaymentModal(false);
+              setSelectedOrderForPayment(null);
+            }}
+            order={selectedOrderForPayment}
+            onPaymentSuccess={(paidOrder) => {
+              // Show receipt after successful payment
+              setPaidOrder(paidOrder);
+              setShowReceiptModal(true);
+              setShowPaymentModal(false);
+              fetchData();
+            }}
+            restaurant={restaurant}
           />
         )}
       </div>

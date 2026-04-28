@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { CustomerService } from '@/lib/services';
-import { authenticateRequest } from '@/lib/middleware/auth';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +23,10 @@ export async function POST(request: NextRequest) {
   try {
     const authUser = authenticateRequest(request);
     if (authUser instanceof NextResponse) return authUser;
+
+    // Only staff (owner, manager, waiter, cashier) can create customers
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager', 'waiter', 'cashier']);
+    if (roleCheck) return roleCheck;
 
     const { name, phone, email, address, notes } = await request.json();
 

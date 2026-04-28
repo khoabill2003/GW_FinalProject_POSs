@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'crypto';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -7,10 +8,36 @@ function generateId() {
   return randomBytes(12).toString('hex');
 }
 
+async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 10;
+  return bcrypt.hash(password, saltRounds);
+}
+
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // ========== USERS ==========
+  // ========== DEFAULT RESTAURANT ==========
+  const restaurant = await prisma.restaurant.upsert({
+    where: { id: 'default' },
+    update: {},
+    create: {
+      id: 'default',
+      name: 'Nhà Hàng Demo',
+      address: '123 Đường ABC, TP.HCM',
+      phone: '028 1234 5678',
+      taxRate: 10.0,
+    },
+  });
+  console.log('✅ Restaurant created/updated:', restaurant.name);
+
+  // ========== USERS (with hashed passwords) ==========
+  // Hash passwords first
+  const ownerPass = await hashPassword('owner123');
+  const managerPass = await hashPassword('manager123');
+  const waiterPass = await hashPassword('waiter123');
+  const kitchenPass = await hashPassword('kitchen123');
+  const cashierPass = await hashPassword('cashier123');
+
   const users = await Promise.all([
     prisma.user.upsert({
       where: { email: 'owner@restaurant.com' },
@@ -19,7 +46,7 @@ async function main() {
         id: generateId(),
         email: 'owner@restaurant.com',
         name: 'Chủ Nhà Hàng',
-        password: 'owner123',
+        password: ownerPass,
         role: 'owner',
       },
     }),
@@ -30,7 +57,7 @@ async function main() {
         id: generateId(),
         email: 'manager@restaurant.com',
         name: 'Quản Lý',
-        password: 'manager123',
+        password: managerPass,
         role: 'manager',
       },
     }),
@@ -41,7 +68,7 @@ async function main() {
         id: generateId(),
         email: 'waiter@restaurant.com',
         name: 'Nhân viên Phục vụ',
-        password: 'waiter123',
+        password: waiterPass,
         role: 'waiter',
       },
     }),
@@ -52,7 +79,7 @@ async function main() {
         id: generateId(),
         email: 'kitchen@restaurant.com',
         name: 'Nhân viên Bếp',
-        password: 'kitchen123',
+        password: kitchenPass,
         role: 'kitchen',
       },
     }),
@@ -63,12 +90,18 @@ async function main() {
         id: generateId(),
         email: 'cashier@restaurant.com',
         name: 'Nhân viên Thu ngân',
-        password: 'cashier123',
+        password: cashierPass,
         role: 'cashier',
       },
     }),
   ]);
   console.log('✅ Users created/updated:', users.length);
+  console.log('📝 Seed users (mật khẩu được hash):');
+  console.log('   Owner: owner@restaurant.com / owner123');
+  console.log('   Manager: manager@restaurant.com / manager123');
+  console.log('   Waiter: waiter@restaurant.com / waiter123');
+  console.log('   Kitchen: kitchen@restaurant.com / kitchen123');
+  console.log('   Cashier: cashier@restaurant.com / cashier123');
 
   // ========== ZONES ==========
   const zones = await Promise.all([

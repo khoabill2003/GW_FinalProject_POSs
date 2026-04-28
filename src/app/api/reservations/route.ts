@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/db';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,13 @@ export async function GET(request: NextRequest) {
 // POST - create reservation with pre-order items
 export async function POST(request: NextRequest) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
+    // Only staff can create reservations (owner, manager, waiter)
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager', 'waiter']);
+    if (roleCheck) return roleCheck;
+
     const body = await request.json();
     const { customerName, customerPhone, customerEmail, guests, tableId, reservationTime, notes, items } = body;
 

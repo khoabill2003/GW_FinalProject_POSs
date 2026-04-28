@@ -21,7 +21,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import * as OrderService from '@/lib/services/order.service';
-import { authenticateRequest } from '@/lib/middleware/auth';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
 // Force dynamic rendering (không cache static)
 export const dynamic = 'force-dynamic';
@@ -43,6 +43,12 @@ export const dynamic = 'force-dynamic';
  */
 export async function GET(request: NextRequest) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+    
+    // Authorization: All authenticated users can view orders
+    // (waiter, kitchen, cashier, manager, owner)
+
     // Parse query params từ URL
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status') || undefined;
@@ -99,6 +105,10 @@ export async function POST(request: NextRequest) {
   try {
     const authUser = authenticateRequest(request);
     if (authUser instanceof NextResponse) return authUser;
+    
+    // Authorization: Only waiter, manager, owner can create orders
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager', 'waiter']);
+    if (roleCheck) return roleCheck;
 
     const body = await request.json();
     const order = await OrderService.createOrder(body);

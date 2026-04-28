@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as OrderService from '@/lib/services/order.service';
-import { authenticateRequest } from '@/lib/middleware/auth';
+import { authenticateRequest, authorizeRoles } from '@/lib/middleware/auth';
 
 // GET single order
 export async function GET(
@@ -8,6 +8,9 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
+    const authUser = authenticateRequest(request);
+    if (authUser instanceof NextResponse) return authUser;
+
     const order = await OrderService.getOrderById(params.id);
 
     if (!order) {
@@ -37,6 +40,21 @@ export async function PUT(
     if (authUser instanceof NextResponse) return authUser;
 
     const body = await request.json();
+    
+    const isPaymentOperation = Boolean(body.paymentMethod || body.paymentStatus === 'paid');
+
+    // Payment operations: cashier/manager/owner only
+    if (isPaymentOperation) {
+      const roleCheck = authorizeRoles(authUser, ['owner', 'manager', 'cashier']);
+      if (roleCheck) return roleCheck;
+
+      const order = await OrderService.updateOrder(params.id, body);
+      return NextResponse.json({ order });
+    }
+
+    // Non-payment operations: waiter/kitchen/manager/owner
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager', 'waiter', 'kitchen']);
+    if (roleCheck) return roleCheck;
     
     // Nếu có items mới → thêm món vào order
     if (body.addItems && Array.isArray(body.addItems) && body.addItems.length > 0) {
@@ -71,6 +89,10 @@ export async function DELETE(
   try {
     const authUser = authenticateRequest(request);
     if (authUser instanceof NextResponse) return authUser;
+
+    // Authorization: Only owner and manager can delete orders
+    const roleCheck = authorizeRoles(authUser, ['owner', 'manager']);
+    if (roleCheck) return roleCheck;
 
     await OrderService.deleteOrder(params.id);
     return NextResponse.json({ message: 'Xóa đơn hàng thành công' });
