@@ -216,7 +216,7 @@ export default function POSPage() {
           price: item.menuItem.price,
           notes: '',
         })),
-        tableId: selectedTable.id,
+        tableId: selectedTable.id === 'takeaway' ? undefined : selectedTable.id,
         customerId: selectedCustomer?.id,
         notes: orderNotes,
         subtotal: state.subtotal,
