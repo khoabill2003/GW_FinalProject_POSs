@@ -198,17 +198,61 @@ export default function OrdersPage() {
   // Kitchen View - Card layout for easy status updates
   const renderKitchenView = () => {
     const activeOrders = orders.filter(o => 
-      ['confirmed', 'preparing', 'ready'].includes(o.status)
+      ['pending', 'confirmed', 'preparing', 'ready'].includes(o.status)
     );
 
     const groupedOrders = {
+      // 'pending' orders that have pending_confirm items = customer added more after being served
+      pending: activeOrders.filter(o => o.status === 'pending' && o.items.some(i => i.status === 'pending_confirm')),
       confirmed: activeOrders.filter(o => o.status === 'confirmed'),
       preparing: activeOrders.filter(o => o.status === 'preparing'),
       ready: activeOrders.filter(o => o.status === 'ready'),
     };
 
     return (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {/* Pending new items column - orders reset from 'served' when customer adds more */}
+        <div className="bg-yellow-50 rounded-lg p-4">
+          <h3 className="text-lg font-bold text-yellow-800 mb-4 flex items-center gap-2">
+            <span className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></span>
+            Gọi thêm món ({groupedOrders.pending.length})
+          </h3>
+          <div className="space-y-4">
+            {groupedOrders.pending.map(order => (
+              <div key={order.id} className="bg-white rounded-lg shadow p-4 border-l-4 border-yellow-400">
+                <div className="flex justify-between items-start mb-2">
+                  <div>
+                    <span className="font-bold text-lg">#{formatOrderNumber(order.orderNumber)}</span>
+                    {order.table && (
+                      <span className="ml-2 text-sm text-gray-600">Bàn {order.table.number}</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-gray-500">{formatDate(order.createdAt)}</span>
+                </div>
+                <div className="space-y-1 mb-3">
+                  {order.items.filter(i => i.status === 'pending_confirm').map(item => (
+                    <div key={item.id} className="flex justify-between text-sm bg-yellow-50 px-2 py-1 rounded">
+                      <span>
+                        <span className="font-medium">{item.quantity}x</span> {item.menuItem.name}
+                        <span className="ml-1 text-yellow-600 text-xs">★ Mới</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={() => handleConfirmNewItems(order.id)}
+                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded-lg font-medium transition-colors text-sm"
+                >
+                  ✅ Xác nhận món mới
+                </button>
+              </div>
+            ))}
+            {groupedOrders.pending.length === 0 && (
+              <p className="text-center text-yellow-600 py-4 text-sm">Không có món gọi thêm</p>
+            )}
+          </div>
+        </div>
+
         {/* Confirmed Column */}
         <div className="bg-blue-50 rounded-lg p-4">
           <h3 className="text-lg font-bold text-blue-800 mb-4 flex items-center gap-2">

@@ -34,12 +34,20 @@ A modern Restaurant Point of Sale (POS) system with an admin panel built using N
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
 
-## Setup Checklist
-- [x] Create copilot-instructions.md
-- [x] Scaffold the Project
-- [x] Customize the Project
-- [x] Install Required Extensions (none required)
-- [x] Compile the Project
-- [x] Create and Run Task
-- [x] Launch the Project
-- [x] Ensure Documentation is Complete
+
+# DATABASE
+DATABASE_URL="file:C:/Users/Admin/Desktop/Restaurant_POS/prisma/dev.db"
+
+# NEXT.JS
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+
+# VNPAY PAYMENT GATEWAY (Sandbox for testing)
+VNP_TMN_CODE=HR1I3T0P
+VNP_HASH_SECRET=JCWWMDOW32WVY1EAM0ER97XQHTGEPLEZ
+VNP_API_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+VNP_RETURN_URL=http://localhost:3000/payment-result
+VNP_IPN_URL=http://localhost:3000/api/payments/vnpay/ipn
+
+# AUTHENTICATION
+NEXTAUTH_SECRET="dev-secret-change-in-production"
+NEXTAUTH_URL=http://localhost:3000

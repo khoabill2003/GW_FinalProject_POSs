@@ -143,7 +143,12 @@ export default function TableOrderingPage() {
               const orderData = await orderRes.json();
               if (orderData.order) {
                 setActiveOrder(orderData.order);
-                setActiveTab('order');
+                // Nếu order đã phục vụ hết, mặc định sang tab menu để khách gọi thêm
+                if (orderData.order.status === 'served') {
+                  setActiveTab('menu');
+                } else {
+                  setActiveTab('order');
+                }
               }
             }
           } else {
@@ -362,12 +367,17 @@ export default function TableOrderingPage() {
     }
   };
 
+  // Kiểm tra xem tất cả món đã được phục vụ chưa (không có món pending_confirm)
+  const allItemsServed = activeOrder?.status === 'served' &&
+    !activeOrder.items.some(item => item.status === 'pending_confirm');
+
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { text: string; color: string }> = {
       pending: { text: 'Chờ xác nhận', color: 'bg-yellow-100 text-yellow-800' },
       confirmed: { text: 'Đã xác nhận', color: 'bg-blue-100 text-blue-800' },
       preparing: { text: 'Đang chuẩn bị', color: 'bg-orange-100 text-orange-800' },
       ready: { text: 'Sẵn sàng', color: 'bg-green-100 text-green-800' },
+      served: { text: 'Đã phục vụ', color: 'bg-purple-100 text-purple-800' },
       completed: { text: 'Hoàn thành', color: 'bg-gray-100 text-gray-800' },
     };
     const badge = statusMap[status] || { text: status, color: 'bg-gray-100 text-gray-800' };
@@ -466,6 +476,19 @@ export default function TableOrderingPage() {
           {/* Menu Section */}
           <div className="lg:col-span-2 space-y-6">
 
+            {/* Banner khi tất cả món đã phục vụ */}
+            {allItemsServed && (
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 flex items-start gap-3">
+                <span className="text-2xl">✅</span>
+                <div>
+                  <p className="font-semibold text-purple-800">Tất cả món đã được phục vụ!</p>
+                  <p className="text-sm text-purple-600 mt-1">
+                    Bạn muốn gọi thêm? Chọn món bên dưới — các món mới sẽ được cộng vào đơn hiện tại (#{String(activeOrder?.orderNumber).padStart(4, '0')}).
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Category Tabs */}
             {categories.length > 0 && (
               <div className="bg-white rounded-lg shadow-sm p-2 flex gap-2 overflow-x-auto">
@@ -536,7 +559,23 @@ export default function TableOrderingPage() {
           {/* Cart Section */}
           <div className="lg:col-span-1">
             <div className="bg-white rounded-lg shadow-md p-4 sticky top-24 space-y-4">
-              <h2 className="text-lg font-bold text-gray-900">🛒 Đơn hàng của bạn</h2>
+              <h2 className="text-lg font-bold text-gray-900">
+                {activeOrder ? '➕ Gọi thêm món' : '🛒 Đơn hàng của bạn'}
+              </h2>
+
+              {/* Thông báo khi có đơn active */}
+              {activeOrder && (
+                <div className={`text-xs rounded-lg p-2 ${
+                  allItemsServed
+                    ? 'bg-purple-50 text-purple-700 border border-purple-200'
+                    : 'bg-blue-50 text-blue-700 border border-blue-200'
+                }`}>
+                  {allItemsServed
+                    ? '✅ Tất cả món đã phục vụ. Món mới sẽ cộng vào đơn #' + String(activeOrder.orderNumber).padStart(4, '0')
+                    : '📋 Món sẽ được thêm vào đơn #' + String(activeOrder.orderNumber).padStart(4, '0')
+                  }
+                </div>
+              )}
 
               {/* Customer Selection */}
               <div className="border-b pb-4">
@@ -766,12 +805,21 @@ export default function TableOrderingPage() {
 
                 {/* Actions */}
                 <div className="flex gap-3">
+                  {allItemsServed ? (
+                    <button
+                      onClick={() => setActiveTab('menu')}
+                      className="flex-1 py-3 px-4 bg-purple-600 text-white rounded-lg font-bold hover:bg-purple-700 transition-colors"
+                    >
+                      ➕ Gọi thêm món (cộng vào đơn này)
+                    </button>
+                  ) : (
                   <button
                     onClick={() => setActiveTab('menu')}
                     className="flex-1 py-3 px-4 bg-primary-600 text-white rounded-lg font-bold hover:bg-primary-700 transition-colors"
                   >
                     ➕ Gọi thêm món
                   </button>
+                  )}
                   <button
                     onClick={() => fetchData()}
                     className="py-3 px-4 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors"
@@ -779,6 +827,13 @@ export default function TableOrderingPage() {
                     🔄 Làm mới
                   </button>
                 </div>
+
+                {allItemsServed && (
+                  <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                    <p className="text-sm font-semibold text-purple-800">✅ Tất cả món đã được phục vụ</p>
+                    <p className="text-xs text-purple-600 mt-1">Muốn gọi thêm? Nhấn nút bên trên — món mới sẽ được cộng vào đơn này.</p>
+                  </div>
+                )}
 
                 <div className="text-center text-sm text-gray-500">
                   💳 Thanh toán tại quầy khi kết thúc

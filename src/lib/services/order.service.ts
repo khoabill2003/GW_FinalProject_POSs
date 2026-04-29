@@ -401,6 +401,21 @@ export async function confirmOrderItems(orderId: string, itemIds?: string[]) {
     data: { status: 'confirmed' },
   });
 
+  // Sau khi xác nhận món mới: nếu order đang ở 'pending' → chuyển sang 'confirmed'
+  // để bếp nhận biết có món mới cần chuẩn bị
+  if (existingOrder.status === 'pending') {
+    // Kiểm tra còn món nào pending_confirm không
+    const remainingPending = await prisma.orderItem.count({
+      where: { orderId, status: 'pending_confirm' },
+    });
+    if (remainingPending === 0) {
+      await prisma.order.update({
+        where: { id: orderId },
+        data: { status: 'confirmed' },
+      });
+    }
+  }
+
   return prisma.order.findUnique({
     where: { id: orderId },
     include: {
@@ -501,6 +516,9 @@ export async function addItemsToOrder(orderId: string, items: { menuItemId: stri
   const needsConfirmation = ['preparing', 'ready', 'served'].includes(existingOrder.status);
   const itemStatus = needsConfirmation ? 'pending_confirm' : 'confirmed';
 
+  // Nếu đơn đã phục vụ (served) và khách gọi thêm → reset về 'pending' để nhân viên xử lý
+  const shouldResetStatus = existingOrder.status === 'served';
+
   // Calculate new items
   let addedSubtotal = 0;
   const newOrderItems = [];
@@ -566,6 +584,8 @@ export async function addItemsToOrder(orderId: string, items: { menuItemId: stri
       subtotal: newSubtotal,
       tax: newTax,
       total: newTotal,
+      // Reset về 'pending' nếu đơn đã phục vụ → thông báo nhân viên có món mới
+      ...(shouldResetStatus && { status: 'pending' }),
     },
     include: {
       items: {
