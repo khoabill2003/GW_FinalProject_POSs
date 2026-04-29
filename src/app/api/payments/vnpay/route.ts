@@ -120,6 +120,10 @@ export async function POST(request: NextRequest) {
      * - vnp_ReturnUrl: URL redirect sau thanh toán
      * - vnp_IpAddr: IP của khách hàng
      */
+    const returnUrl = VNP_RETURN_URL.includes('?')
+      ? `${VNP_RETURN_URL}&orderId=${encodeURIComponent(orderId)}`
+      : `${VNP_RETURN_URL}?orderId=${encodeURIComponent(orderId)}`;
+
     const vnpParams: Record<string, string | number> = {
       vnp_Version: '2.1.0',
       vnp_Command: 'pay',
@@ -130,7 +134,7 @@ export async function POST(request: NextRequest) {
       vnp_OrderInfo: orderInfo || `Thanh toan don hang ${orderNumber}`,
       vnp_OrderType: 'other',
       vnp_Amount: Math.round(amount * 100), // QUAN TRỌNG: Nhân 100!
-      vnp_ReturnUrl: VNP_RETURN_URL,
+      vnp_ReturnUrl: returnUrl,
       vnp_IpAddr: ipAddr,
       vnp_CreateDate: createDate,
     };

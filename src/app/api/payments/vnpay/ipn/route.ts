@@ -86,26 +86,18 @@ export async function GET(request: NextRequest) {
 
     // 5. Xử lý theo kết quả thanh toán
     if (responseCode === '00' && transactionStatus === '00') {
-      // Thanh toán thành công
+      // Thanh toán thành công: chỉ đánh dấu đã thanh toán.
+      // Không auto completed ở đây để cashier quyết định in biên lai/hoàn tất đơn.
       await prisma.order.update({
         where: { id: order.id },
         data: {
           paymentStatus: 'paid',
           paymentMethod: 'vnpay',
-          status: 'completed',
-          notes: order.notes 
+          notes: order.notes
             ? `${order.notes}\n[VNPay] Transaction: ${transactionNo}, Bank: ${bankCode}, Date: ${payDate}`
             : `[VNPay] Transaction: ${transactionNo}, Bank: ${bankCode}, Date: ${payDate}`,
         },
       });
-
-      // Giải phóng bàn nếu có
-      if (order.tableId) {
-        await prisma.table.update({
-          where: { id: order.tableId },
-          data: { status: 'available' },
-        });
-      }
 
       console.log('IPN: Payment confirmed for order:', orderNumber);
       return NextResponse.json({ RspCode: '00', Message: 'Confirm Success' });

@@ -52,19 +52,22 @@ export async function PUT(
       return NextResponse.json({ order });
     }
 
-    // Non-payment operations: waiter/kitchen/manager/owner
+    // confirmItems: chỉ owner/manager/waiter
+    if (body.confirmItems === true) {
+      const confirmRoleCheck = authorizeRoles(authUser, ['owner', 'manager', 'waiter']);
+      if (confirmRoleCheck) return confirmRoleCheck;
+
+      const order = await OrderService.confirmOrderItems(params.id, body.itemIds);
+      return NextResponse.json({ order });
+    }
+
+    // Non-payment operations khác: waiter/kitchen/manager/owner
     const roleCheck = authorizeRoles(authUser, ['owner', 'manager', 'waiter', 'kitchen']);
     if (roleCheck) return roleCheck;
-    
+
     // Nếu có items mới → thêm món vào order
     if (body.addItems && Array.isArray(body.addItems) && body.addItems.length > 0) {
       const order = await OrderService.addItemsToOrder(params.id, body.addItems);
-      return NextResponse.json({ order });
-    }
-    
-    // Nếu yêu cầu xác nhận món mới
-    if (body.confirmItems === true) {
-      const order = await OrderService.confirmOrderItems(params.id, body.itemIds);
       return NextResponse.json({ order });
     }
     

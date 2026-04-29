@@ -51,3 +51,6 @@ VNP_IPN_URL=http://localhost:3000/api/payments/vnpay/ipn
 # AUTHENTICATION
 NEXTAUTH_SECRET="dev-secret-change-in-production"
 NEXTAUTH_URL=http://localhost:3000
+
+# Demo Information for VNPAY Payment Gateway:
+https://sandbox.vnpayment.vn/apis/vnpay-demo/

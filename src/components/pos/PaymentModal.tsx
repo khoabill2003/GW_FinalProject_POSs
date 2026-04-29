@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import Button from '@/components/ui/Button';
 import { formatCurrency } from '@/lib/utils';
@@ -10,7 +10,7 @@ interface PaymentModalProps {
   isOpen: boolean;
   order: Order;
   onClose: () => void;
-  onPaymentSuccess: (paidOrder: Order) => void;
+  onPaymentFinalized: () => void;
   restaurant?: {
     name: string;
     address?: string;
@@ -24,22 +24,37 @@ export default function PaymentModal({
   isOpen,
   order,
   onClose,
-  onPaymentSuccess,
+  onPaymentFinalized,
   restaurant,
 }: PaymentModalProps) {
-  const [step, setStep] = useState<'method' | 'cash' | 'vnpay' | 'confirm' | 'success'>('method');
+  const [step, setStep] = useState<'method' | 'cash' | 'change' | 'vnpay' | 'confirm' | 'success'>('method');
   const [cashReceived, setCashReceived] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState('');
+  const [paidOrder, setPaidOrder] = useState<Order | null>(null);
   const printIframeRef = useRef<HTMLIFrameElement>(null);
 
   const amount = order.total;
   const change = cashReceived - amount;
 
+  useEffect(() => {
+    if (!isOpen) {
+      setStep('method');
+      setCashReceived(0);
+      setError('');
+      setIsProcessing(false);
+      setPaidOrder(null);
+    }
+  }, [isOpen]);
+
   const handleCashPayment = () => {
     setError('');
     if (cashReceived < amount) {
       setError(`Tiền nhận chưa đủ. Còn thiếu ${formatCurrency(amount - cashReceived)}`);
+      return;
+    }
+    if (change > 0) {
+      setStep('change');
       return;
     }
     setStep('confirm');
@@ -66,9 +81,8 @@ export default function PaymentModal({
       }
 
       const data = await response.json();
+      setPaidOrder(data.order);
       setStep('success');
-      // Call success callback with updated order
-      onPaymentSuccess(data.order);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Lỗi hệ thống');
     } finally {
@@ -102,6 +116,7 @@ export default function PaymentModal({
       if (data.paymentUrl) {
         // Lưu order ID vào session để verify sau
         sessionStorage.setItem('vnpay_order_id', order.id);
+        sessionStorage.setItem('vnpay_order_data', JSON.stringify(order));
         // Redirect to VNPay
         window.location.href = data.paymentUrl;
       }
@@ -277,10 +292,34 @@ export default function PaymentModal({
     }
   };
 
-  const handleCompletePayment = () => {
-    onClose();
-    setStep('method');
-    setCashReceived(0);
+  const handleCompletePayment = async () => {
+    const finalOrder = paidOrder || order;
+
+    setIsProcessing(true);
+    setError('');
+    try {
+      const response = await fetch(`/api/orders/${finalOrder.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'completed',
+          paymentStatus: 'paid',
+          paymentMethod: finalOrder.paymentMethod || 'cash',
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Không thể hoàn thành đơn hàng');
+      }
+
+      onPaymentFinalized();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Lỗi hệ thống');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -376,7 +415,45 @@ export default function PaymentModal({
                 disabled={cashReceived < amount || isProcessing}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition font-medium"
               >
-                {isProcessing ? '⏳ Đang xử lý...' : 'Tiếp tục →'}
+                {isProcessing ? '⏳ Đang xử lý...' : change > 0 ? 'Xác nhận thối tiền →' : 'Tiếp tục →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* CONFIRM CHANGE */}
+        {step === 'change' && (
+          <div className="space-y-4">
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg">
+              <p className="text-sm text-amber-900 mb-3">Xác nhận đã thối tiền cho khách:</p>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Tổng tiền:</span>
+                  <span className="font-medium">{formatCurrency(amount)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Khách đưa:</span>
+                  <span className="font-medium">{formatCurrency(cashReceived)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="text-gray-600">Tiền thối:</span>
+                  <span className="font-medium text-green-600">{formatCurrency(change)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setStep('cash')}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-900 rounded-lg hover:bg-gray-300 transition font-medium"
+              >
+                ◀ Quay lại
+              </button>
+              <button
+                onClick={() => setStep('confirm')}
+                className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition font-medium"
+              >
+                ✓ Đã thối tiền
               </button>
             </div>
           </div>
@@ -430,22 +507,32 @@ export default function PaymentModal({
               <p className="text-sm text-green-700 mt-2">Đơn hàng #{order.orderNumber.toString().padStart(6, '0')}</p>
             </div>
 
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-lg">
+                {error}
+              </div>
+            )}
+
             <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700">Hành động:</p>
+              <p className="text-sm font-medium text-gray-700">In biên lai?</p>
               <button
                 onClick={() => {
                   handlePrint();
-                  setTimeout(() => handleCompletePayment(), 500);
+                  setTimeout(() => {
+                    void handleCompletePayment();
+                  }, 400);
                 }}
-                className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium"
+                disabled={isProcessing}
+                className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                🖨️ In biên lai
+                {isProcessing ? '⏳ Đang xử lý...' : '🖨️ In biên lai và hoàn thành'}
               </button>
               <button
-                onClick={handleCompletePayment}
-                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
+                onClick={() => void handleCompletePayment()}
+                disabled={isProcessing}
+                className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:bg-gray-400 disabled:cursor-not-allowed"
               >
-                ✓ Hoàn thành
+                {isProcessing ? '⏳ Đang xử lý...' : '✓ Hoàn thành không in'}
               </button>
             </div>
           </div>

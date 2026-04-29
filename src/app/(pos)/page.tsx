@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useCart } from '@/context/CartContext';
 import { formatCurrency, formatOrderNumber } from '@/lib/utils';
-import ReceiptModal from '@/components/pos/ReceiptModal';
 import PaymentModal from '@/components/pos/PaymentModal';
 import RestaurantInfo from '@/components/ui/RestaurantInfo';
 import { Category, MenuItem, Table, Customer, Order } from '@/types';
@@ -46,11 +45,9 @@ export default function POSPage() {
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showQRModal, setShowQRModal] = useState(false);
-  const [showReceiptModal, setShowReceiptModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedTableForQR, setSelectedTableForQR] = useState<Table | null>(null);
   const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<Order | null>(null);
-  const [paidOrder, setPaidOrder] = useState<Order | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchCustomer, setSearchCustomer] = useState('');
   const [activeTab, setActiveTab] = useState<'taking' | 'management'>('taking');
@@ -286,6 +283,34 @@ export default function POSPage() {
   const handlePayment = async (orderId: string) => {
     const order = orders.find(o => o.id === orderId);
     if (order) {
+      if (order.paymentStatus === 'paid') {
+        try {
+          const response = await fetch(`/api/orders/${order.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              status: 'completed',
+              paymentStatus: 'paid',
+              paymentMethod: order.paymentMethod || 'cash',
+            }),
+          });
+
+          if (!response.ok) {
+            const error = await response.json();
+            alert(`❌ Lỗi: ${error.error || 'Không thể hoàn tất đơn'}`);
+            return;
+          }
+
+          alert('✅ Đã hoàn tất đơn hàng');
+          fetchData();
+          return;
+        } catch (error) {
+          console.error('Failed to finalize paid order:', error);
+          alert('❌ Không thể hoàn tất đơn hàng');
+          return;
+        }
+      }
+
       setSelectedOrderForPayment(order);
       setShowPaymentModal(true);
     }
@@ -334,11 +359,18 @@ export default function POSPage() {
   const isKitchen = user?.role === 'kitchen';
   const isOwnerOrManager = ['owner', 'manager'].includes(user?.role || '');
 
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+
   // Filter orders based on role
   const cashierOrders = orders.filter(order => 
-    order.status === 'served' && 
-    order.paymentStatus === 'unpaid'
+    order.status === 'served' &&
+    (
+      order.paymentStatus !== 'paid' ||
+      new Date(order.createdAt) >= startOfToday
+    )
   );
+  const cashierUnpaidCount = cashierOrders.filter(order => order.paymentStatus !== 'paid').length;
   const waiterOrders = orders.filter(order => ['pending', 'confirmed', 'preparing', 'ready', 'served'].includes(order.status) && order.status !== 'completed' && order.status !== 'cancelled');
   const kitchenOrders = orders.filter(order => ['pending', 'confirmed', 'preparing'].includes(order.status));
 
@@ -359,7 +391,7 @@ export default function POSPage() {
           {/* Role-specific indicators */}
           {isCashier && (
             <span className="text-sm bg-primary-700 px-3 py-1 rounded-full">
-              💰 {cashierOrders.length} đơn chờ thanh toán
+              💰 {cashierUnpaidCount} đơn chưa thanh toán
             </span>
           )}
           {isWaiter && (
@@ -765,7 +797,7 @@ export default function POSPage() {
           {isCashier || isKitchen ? (
             /* Cashier/Kitchen View - Orders */
             <div className="flex-1 overflow-y-auto p-6">
-              <h2 className="text-2xl font-bold mb-6">{isCashier ? '💰 Đơn hàng chờ thanh toán' : '👨‍🍳 Đơn hàng cần chuẩn bị'}</h2>
+              <h2 className="text-2xl font-bold mb-6">{isCashier ? '💰 Đơn hàng cần thanh toán / hoàn tất' : '👨‍🍳 Đơn hàng cần chuẩn bị'}</h2>
 
               {(isCashier ? cashierOrders : kitchenOrders).length === 0 ? (
                 <div className="bg-white rounded-lg p-12 shadow-sm">
@@ -794,8 +826,8 @@ export default function POSPage() {
                         </div>
                         <div className="text-right">
                           <p className="text-2xl font-bold text-primary-600">{formatCurrency(order.total)}</p>
-                          <span className="inline-block px-3 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
-                            Chờ thanh toán
+                          <span className={`inline-block px-3 py-1 text-xs rounded-full ${order.paymentStatus === 'paid' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                            {order.paymentStatus === 'paid' ? 'Đã thanh toán - chờ hoàn tất' : 'Chờ thanh toán'}
                           </span>
                         </div>
                       </div>
@@ -823,25 +855,9 @@ export default function POSPage() {
                         </div>
                         {/* Nút xác nhận món mới nếu có món pending */}
                         {order.items.some(item => item.status === 'pending_confirm') && (
-                          <button
-                            onClick={async () => {
-                              try {
-                                const res = await fetch(`/api/orders/${order.id}`, {
-                                  method: 'PUT',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ confirmItems: true }),
-                                });
-                                if (res.ok) {
-                                  fetchData();
-                                }
-                              } catch (error) {
-                                console.error('Error confirming items:', error);
-                              }
-                            }}
-                            className="mt-3 w-full bg-yellow-500 text-white py-2 px-4 rounded-lg hover:bg-yellow-600 transition-colors text-sm font-medium"
-                          >
-                            ✅ Xác nhận {order.items.filter(item => item.status === 'pending_confirm').length} món mới gọi thêm
-                          </button>
+                          <div className="mt-3 w-full bg-yellow-100 text-yellow-800 py-2 px-4 rounded-lg text-sm font-medium text-center">
+                            ⏳ Món gọi thêm đang chờ phục vụ/quản lý xác nhận
+                          </div>
                         )}
                       </div>
 
@@ -854,32 +870,16 @@ export default function POSPage() {
                               onClick={() => handlePayment(order.id)}
                               className="w-full bg-green-500 text-white py-2 px-3 rounded-lg hover:bg-green-600 transition-colors text-sm font-medium"
                             >
-                              💳 Thanh toán
+                              {order.paymentStatus === 'paid' ? '✅ Hoàn tất đơn' : '💳 Thanh toán'}
                             </button>
                           </>
                         ) : (
                           /* Kitchen - Confirm pending items, start cooking, mark ready */
                           <>
                             {order.items.some(item => item.status === 'pending_confirm') && (
-                              <button
-                                onClick={async () => {
-                                  try {
-                                    const res = await fetch(`/api/orders/${order.id}`, {
-                                      method: 'PUT',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ confirmItems: true }),
-                                    });
-                                    if (res.ok) {
-                                      fetchData();
-                                    }
-                                  } catch (error) {
-                                    console.error('Error confirming items:', error);
-                                  }
-                                }}
-                                className="w-full bg-yellow-500 text-white py-2 px-4 rounded-lg hover:bg-yellow-600 transition-colors font-medium mb-2"
-                              >
-                                ⏳ Xác nhận {order.items.filter(item => item.status === 'pending_confirm').length} món mới
-                              </button>
+                              <div className="w-full bg-yellow-100 text-yellow-800 py-2 px-4 rounded-lg font-medium mb-2 text-center">
+                                ⏳ Chờ phục vụ/quản lý xác nhận món gọi thêm
+                              </div>
                             )}
                             {order.status === 'confirmed' && (
                               <button
@@ -1469,39 +1469,6 @@ export default function POSPage() {
           </>
         )}
 
-        {/* Receipt Modal */}
-        {paidOrder && (
-          <ReceiptModal
-            isOpen={showReceiptModal}
-            onClose={async () => {
-              // Update order to 'completed' when receipt is closed (for cashier role)
-              if (isCashier && paidOrder.paymentStatus === 'paid') {
-                try {
-                  await fetch(`/api/orders/${paidOrder.id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      status: 'completed'
-                    }),
-                  });
-                } catch (err) {
-                  console.error('Failed to update order status:', err);
-                }
-              }
-              setShowReceiptModal(false);
-              setPaidOrder(null);
-              clearCart();
-              fetchData(); // Refresh to remove completed order
-            }}
-            order={paidOrder}
-            restaurant={{
-              name: 'Nhà hàng',
-              address: 'Địa chỉ nhà hàng',
-              phone: '0123456789',
-            }}
-          />
-        )}
-
         {/* Payment Modal */}
         {selectedOrderForPayment && (
           <PaymentModal
@@ -1511,11 +1478,9 @@ export default function POSPage() {
               setSelectedOrderForPayment(null);
             }}
             order={selectedOrderForPayment}
-            onPaymentSuccess={(paidOrder) => {
-              // Show receipt after successful payment
-              setPaidOrder(paidOrder);
-              setShowReceiptModal(true);
+            onPaymentFinalized={() => {
               setShowPaymentModal(false);
+              setSelectedOrderForPayment(null);
               fetchData();
             }}
             restaurant={restaurant}

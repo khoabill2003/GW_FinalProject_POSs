@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, Suspense } from 'react';
+import { useEffect, useState, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Button from '@/components/ui/Button';
 
@@ -26,12 +26,16 @@ function PaymentResultContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'failed'>('loading');
   const [message, setMessage] = useState('Đang xử lý thanh toán...');
+  const [isFinalizing, setIsFinalizing] = useState(false);
+  const [isFinalized, setIsFinalized] = useState(false);
   const [orderInfo, setOrderInfo] = useState<{
     orderId: string;
     txnRef: string;
     amount: number;
     bankCode: string;
   } | null>(null);
+  const [vnpayParams, setVnpayParams] = useState<Record<string, string>>({});
+  const printIframeRef = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const processPayment = async () => {
@@ -43,11 +47,19 @@ function PaymentResultContent() {
         const vnp_Amount = searchParams.get('vnp_Amount');
         const vnp_BankCode = searchParams.get('vnp_BankCode');
         const vnp_TransactionStatus = searchParams.get('vnp_TransactionStatus');
+
+        const rawParams: Record<string, string> = {};
+        searchParams.forEach((value, key) => {
+          rawParams[key] = value;
+        });
+        setVnpayParams(rawParams);
         
-        // Get orderId from sessionStorage
+        // Get orderId from query/sessionStorage
+        const queryOrderId = searchParams.get('orderId');
         const storedOrderId = sessionStorage.getItem('vnpay_order_id');
+        const resolvedOrderId = storedOrderId || queryOrderId || '';
         
-        if (!storedOrderId) {
+        if (!resolvedOrderId) {
           // Nếu không có trong session, thử lấy từ txnRef
           if (vnp_TxnRef) {
             // txnRef format: orderNumber + 6 digits (VD: 12345678123456)
@@ -61,7 +73,7 @@ function PaymentResultContent() {
           }
         } else {
           setOrderInfo({
-            orderId: storedOrderId,
+            orderId: resolvedOrderId,
             txnRef: vnp_TxnRef || '',
             amount: vnp_Amount ? parseInt(vnp_Amount) / 100 : 0,
             bankCode: vnp_BankCode || '',
@@ -70,36 +82,26 @@ function PaymentResultContent() {
 
         // Check response code và transaction status
         if (vnp_ResponseCode === '00' && vnp_TransactionStatus === '00') {
-          // Thanh toán thành công
-          // IPN đã xử lý cập nhật order, ở đây chỉ hiển thị kết quả
-          if (storedOrderId) {
-            // Double check: cập nhật order (backup cho IPN)
+          // Thanh toán thành công: chỉ hiển thị trạng thái thành công.
+          // Không auto completed tại đây; cashier sẽ xác nhận in biên lai/hoàn tất ở bước kế tiếp.
+          if (resolvedOrderId) {
             try {
-              await fetch(`/api/orders/${storedOrderId}`, {
-                method: 'PUT',
+              await fetch('/api/payments/vnpay/confirm-return', {
+                method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                  paymentStatus: 'paid',
-                  status: 'completed',
-                  paymentMethod: 'vnpay',
+                  action: 'mark_paid',
+                  orderId: resolvedOrderId,
+                  params: rawParams,
                 }),
               });
-            } catch (e) {
-              console.log('Order update via return URL (IPN should have handled this)');
+            } catch {
+              // IPN là nguồn chính; return URL chỉ là phương án dự phòng
             }
-            
-            // Clear sessionStorage
-            sessionStorage.removeItem('vnpay_order_id');
-            sessionStorage.removeItem('vnpay_order_data');
           }
           
           setStatus('success');
-          setMessage('Thanh toán thành công!');
-          
-          // Redirect after 5 seconds
-          setTimeout(() => {
-            router.push('/');
-          }, 5000);
+          setMessage('Thanh toán thành công! Vui lòng chọn bước hoàn tất đơn hàng.');
         } else {
           // Thanh toán thất bại
           setStatus('failed');
@@ -124,6 +126,102 @@ function PaymentResultContent() {
       style: 'currency',
       currency: 'VND',
     }).format(amount);
+  };
+
+  const buildReceiptHtml = (orderData: any) => {
+    const date = new Date(orderData.createdAt);
+    const formattedDate = date.toLocaleDateString('vi-VN');
+    const formattedTime = date.toLocaleTimeString('vi-VN');
+
+    return `<!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="UTF-8" />
+          <title>Hoa don #${orderData.orderNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; width: 80mm; margin: 0 auto; padding: 10px; font-size: 12px; }
+            .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 8px; margin-bottom: 8px; }
+            .row { display: flex; justify-content: space-between; margin: 3px 0; }
+            .total { border-top: 1px solid #000; margin-top: 8px; padding-top: 8px; font-weight: bold; }
+            .footer { text-align: center; margin-top: 10px; font-size: 11px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div><strong>RESTAURANT POS</strong></div>
+            <div>Hoa don #${String(orderData.orderNumber).padStart(6, '0')}</div>
+          </div>
+          <div class="row"><span>Ngay:</span><span>${formattedDate}</span></div>
+          <div class="row"><span>Gio:</span><span>${formattedTime}</span></div>
+          ${orderData.table ? `<div class="row"><span>Ban:</span><span>${orderData.table.number}</span></div>` : ''}
+          <div style="border-bottom:1px dashed #000; margin:8px 0;"></div>
+          ${(orderData.items || []).map((item: any) => `
+            <div class="row">
+              <span>${item.quantity}x ${item.menuItem?.name || item.menuItemName || 'Mon an'}</span>
+              <span>${formatCurrency(item.totalPrice || item.quantity * (item.unitPrice || 0))}</span>
+            </div>
+          `).join('')}
+          <div class="total">
+            <div class="row"><span>Tam tinh:</span><span>${formatCurrency(orderData.subtotal || 0)}</span></div>
+            <div class="row"><span>Thue:</span><span>${formatCurrency(orderData.tax || 0)}</span></div>
+            <div class="row"><span>Tong cong:</span><span>${formatCurrency(orderData.total || 0)}</span></div>
+          </div>
+          <div class="footer">Cam on quy khach!</div>
+        </body>
+      </html>`;
+  };
+
+  const finalizeOrder = async (printReceipt: boolean) => {
+    if (!orderInfo?.orderId) {
+      setIsFinalized(true);
+      setMessage('Đã ghi nhận thao tác. Không tìm thấy mã đơn để tự hoàn tất.');
+      return;
+    }
+
+    setIsFinalizing(true);
+    try {
+      if (printReceipt) {
+        const orderRes = await fetch(`/api/orders/${orderInfo.orderId}`);
+        if (orderRes.ok) {
+          const data = await orderRes.json();
+          const html = buildReceiptHtml(data.order);
+          const iframeWindow = printIframeRef.current?.contentWindow;
+          if (iframeWindow) {
+            iframeWindow.document.open();
+            iframeWindow.document.write(html);
+            iframeWindow.document.close();
+            setTimeout(() => iframeWindow.print(), 250);
+          }
+        }
+      }
+
+      const response = await fetch('/api/payments/vnpay/finalize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: orderInfo.orderId,
+          vnpParams: vnpayParams,
+        }),
+      });
+
+      sessionStorage.removeItem('vnpay_order_id');
+      sessionStorage.removeItem('vnpay_order_data');
+      setIsFinalized(true);
+      if (response.ok) {
+        setMessage('Đã ghi nhận và hoàn tất đơn hàng thành công.');
+      } else if (response.status === 401 || response.status === 403) {
+        setMessage('Đã ghi nhận thao tác. Chưa có quyền hoàn tất tự động, vui lòng hoàn tất đơn ở màn hình POS.');
+      } else {
+        setMessage('Đã ghi nhận thao tác. Hiện chưa thể hoàn tất tự động, vui lòng hoàn tất đơn ở POS.');
+      }
+    } catch (error) {
+      sessionStorage.removeItem('vnpay_order_id');
+      sessionStorage.removeItem('vnpay_order_data');
+      setIsFinalized(true);
+      setMessage('Đã ghi nhận thao tác. Có lỗi khi đồng bộ hoàn tất đơn, vui lòng kiểm tra ở POS.');
+    } finally {
+      setIsFinalizing(false);
+    }
   };
 
   return (
@@ -185,10 +283,29 @@ function PaymentResultContent() {
               </div>
             )}
             
-            <p className="text-xs text-gray-500">Tự động quay về màn hình chính trong 5 giây...</p>
-            <Button onClick={() => router.push('/')} className="w-full">
-              Quay về ngay
-            </Button>
+            <p className="text-sm text-gray-600">Bạn muốn in biên lai trước khi hoàn tất đơn không?</p>
+            <div className="space-y-2">
+              <Button
+                onClick={() => void finalizeOrder(true)}
+                className="w-full"
+                disabled={isFinalizing || isFinalized}
+              >
+                {isFinalizing ? 'Đang xử lý...' : '🖨️ In biên lai và hoàn tất'}
+              </Button>
+              <Button
+                onClick={() => void finalizeOrder(false)}
+                variant="outline"
+                className="w-full"
+                disabled={isFinalizing || isFinalized}
+              >
+                {isFinalizing ? 'Đang xử lý...' : '✓ Hoàn tất không in'}
+              </Button>
+              {isFinalized && (
+                <Button onClick={() => router.push('/')} className="w-full">
+                  Quay về màn hình chính
+                </Button>
+              )}
+            </div>
           </div>
         )}
 
@@ -233,6 +350,7 @@ function PaymentResultContent() {
           </div>
         )}
       </div>
+      <iframe ref={printIframeRef} style={{ display: 'none' }} title="Print Receipt" />
     </div>
   );
 }

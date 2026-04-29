@@ -142,6 +142,11 @@ export default function OrdersPage() {
 
   // Xác nhận các món mới thêm vào order
   const handleConfirmNewItems = async (orderId: string) => {
+    if (!canConfirmOrder) {
+      setError('Không có quyền xác nhận món gọi thêm');
+      return;
+    }
+
     try {
       const response = await fetch(`/api/orders/${orderId}`, {
         method: 'PUT',
@@ -239,12 +244,18 @@ export default function OrdersPage() {
                     </div>
                   ))}
                 </div>
-                <button
-                  onClick={() => handleConfirmNewItems(order.id)}
-                  className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded-lg font-medium transition-colors text-sm"
-                >
-                  ✅ Xác nhận món mới
-                </button>
+                {canConfirmOrder ? (
+                  <button
+                    onClick={() => handleConfirmNewItems(order.id)}
+                    className="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded-lg font-medium transition-colors text-sm"
+                  >
+                    ✅ Xác nhận món mới
+                  </button>
+                ) : (
+                  <div className="w-full bg-gray-100 text-gray-500 py-2 rounded-lg font-medium text-center text-sm">
+                    Chỉ quản lý/chủ quán/phục vụ được xác nhận
+                  </div>
+                )}
               </div>
             ))}
             {groupedOrders.pending.length === 0 && (
@@ -854,12 +865,18 @@ export default function OrdersPage() {
                         </p>
                         <p className="text-xs text-yellow-600">Khách hàng đã gọi thêm món qua QR</p>
                       </div>
-                      <button
-                        onClick={() => handleConfirmNewItems(selectedOrder.id)}
-                        className="px-4 py-2 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition-colors"
-                      >
-                        ✅ Xác nhận tất cả
-                      </button>
+                      {canConfirmOrder ? (
+                        <button
+                          onClick={() => handleConfirmNewItems(selectedOrder.id)}
+                          className="px-4 py-2 bg-yellow-600 text-white rounded-lg font-medium hover:bg-yellow-700 transition-colors"
+                        >
+                          ✅ Xác nhận tất cả
+                        </button>
+                      ) : (
+                        <span className="text-xs text-yellow-700 font-medium">
+                          Chỉ quản lý/chủ quán/phục vụ được xác nhận
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}

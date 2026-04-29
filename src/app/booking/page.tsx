@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { formatCurrency } from '@/lib/utils';
 
+const PHONE_REGEX = /^(?:\+?84|0)\d{9,10}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 interface Category {
   id: string;
   name: string;
@@ -66,6 +69,55 @@ export default function BookingPage() {
   const [error, setError] = useState('');
   const [reservationResult, setReservationResult] = useState<{ orderNumber?: number; tableNumber?: number } | null>(null);
 
+  const getReservationDateTime = useCallback(() => {
+    if (!reservationDate || !reservationTime) return null;
+    const dateTime = new Date(`${reservationDate}T${reservationTime}:00`);
+    return Number.isNaN(dateTime.getTime()) ? null : dateTime;
+  }, [reservationDate, reservationTime]);
+
+  const validateBookingInfo = useCallback(() => {
+    const normalizedName = customerName.trim();
+    const normalizedPhone = customerPhone.trim().replace(/[\s.-]/g, '');
+    const normalizedEmail = customerEmail.trim();
+    const normalizedNotes = notes.trim();
+
+    if (!normalizedName || !normalizedPhone || !reservationDate || !reservationTime) {
+      return 'Vui lòng điền đầy đủ thông tin bắt buộc (*)';
+    }
+
+    if (normalizedName.length < 2 || normalizedName.length > 80) {
+      return 'Tên khách hàng phải từ 2 đến 80 ký tự';
+    }
+
+    if (!PHONE_REGEX.test(normalizedPhone)) {
+      return 'Số điện thoại không hợp lệ';
+    }
+
+    if (normalizedEmail && !EMAIL_REGEX.test(normalizedEmail)) {
+      return 'Email không hợp lệ';
+    }
+
+    if (!Number.isInteger(guests) || guests < 1 || guests > 50) {
+      return 'Số khách phải là số nguyên từ 1 đến 50';
+    }
+
+    if (normalizedNotes.length > 500) {
+      return 'Ghi chú tối đa 500 ký tự';
+    }
+
+    const reservationDateTime = getReservationDateTime();
+    if (!reservationDateTime) {
+      return 'Ngày giờ đặt bàn không hợp lệ';
+    }
+
+    const minTime = new Date(Date.now() + 10 * 60 * 1000);
+    if (reservationDateTime < minTime) {
+      return 'Thời gian đặt bàn phải sau hiện tại ít nhất 10 phút';
+    }
+
+    return null;
+  }, [customerName, customerPhone, customerEmail, notes, reservationDate, reservationTime, guests, getReservationDateTime]);
+
   const fetchData = useCallback(async () => {
     try {
       const [restRes, tableRes, catRes, menuRes] = await Promise.all([
@@ -98,6 +150,12 @@ export default function BookingPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  useEffect(() => {
+    if (selectedTable && selectedTable.capacity < guests) {
+      setSelectedTable(null);
+    }
+  }, [guests, selectedTable]);
+
   // Set default date to today
   useEffect(() => {
     const today = new Date();
@@ -129,28 +187,54 @@ export default function BookingPage() {
   const availableTables = tables.filter(t => t.status === 'available' && t.capacity >= guests);
 
   const handleSubmit = async () => {
-    if (!selectedTable) return;
+    const validationError = validateBookingInfo();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    if (!selectedTable) {
+      setError('Vui lòng chọn bàn trước khi xác nhận đặt bàn');
+      return;
+    }
+
+    const isSelectedTableStillAvailable = availableTables.some((table) => table.id === selectedTable.id);
+    if (!isSelectedTableStillAvailable) {
+      setError('Bàn đã chọn không còn khả dụng, vui lòng chọn lại');
+      setStep('table');
+      return;
+    }
+
+    const reservationDateTime = getReservationDateTime();
+    if (!reservationDateTime) {
+      setError('Ngày giờ đặt bàn không hợp lệ');
+      return;
+    }
+
+    if (cart.some((item) => !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 20)) {
+      setError('Số lượng món đặt trước không hợp lệ');
+      return;
+    }
+
     setIsSubmitting(true);
     setError('');
 
     try {
-      const reservationDateTime = new Date(`${reservationDate}T${reservationTime}:00`);
-
       const res = await fetch('/api/reservations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          customerName,
-          customerPhone,
-          customerEmail,
+          customerName: customerName.trim(),
+          customerPhone: customerPhone.trim().replace(/[\s.-]/g, ''),
+          customerEmail: customerEmail.trim(),
           guests,
           tableId: selectedTable.id,
           reservationTime: reservationDateTime.toISOString(),
-          notes,
+          notes: notes.trim(),
           items: cart.map(c => ({
             menuItemId: c.menuItem.id,
             quantity: c.quantity,
-            notes: c.notes || '',
+            notes: c.notes?.trim() || '',
           })),
         }),
       });
@@ -319,8 +403,9 @@ export default function BookingPage() {
 
             <button
               onClick={() => {
-                if (!customerName || !customerPhone || !reservationDate || !reservationTime) {
-                  setError('Vui lòng điền đầy đủ thông tin bắt buộc (*)');
+                const validationError = validateBookingInfo();
+                if (validationError) {
+                  setError(validationError);
                   return;
                 }
                 setError('');
@@ -490,7 +575,21 @@ export default function BookingPage() {
               )}
 
               <button
-                onClick={() => { setError(''); setStep('confirm'); }}
+                onClick={() => {
+                  const validationError = validateBookingInfo();
+                  if (validationError) {
+                    setError(validationError);
+                    setStep('info');
+                    return;
+                  }
+                  if (!selectedTable) {
+                    setError('Vui lòng chọn bàn trước khi xác nhận');
+                    setStep('table');
+                    return;
+                  }
+                  setError('');
+                  setStep('confirm');
+                }}
                 className="w-full py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all"
               >
                 {cart.length > 0 ? 'Xác nhận đặt bàn & món →' : 'Chỉ đặt bàn (không gọi trước) →'}
